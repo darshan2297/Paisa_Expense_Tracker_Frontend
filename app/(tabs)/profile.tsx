@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -199,8 +200,8 @@ export default function ProfileScreen() {
       </Card>
 
       <View style={styles.quickLinks}>
-        {/* Security & privacy / Lock the app have no onPress yet - they
-            route to the Security feature (F20), which doesn't exist yet.
+        {/* Security & privacy has no onPress yet - the full Security
+            screen (sessions, backup) is F20 and doesn't exist yet.
             Rendered now for layout fidelity to the mockup; wired once built. */}
         <View style={styles.quickLinkCard}>
           <IconChip name="shield" background={colors.successTint} color={colors.success} />
@@ -209,13 +210,16 @@ export default function ProfileScreen() {
             <Text style={styles.quickLinkSub}>PIN, biometrics, backups</Text>
           </View>
         </View>
-        <View style={styles.quickLinkCard}>
+        <Pressable
+          onPress={() => router.push('/lock-setup')}
+          style={({ pressed }) => [styles.quickLinkCard, pressed && styles.quickLinkPressed]}
+        >
           <IconChip name="lock" background={colors.accentTint} color={colors.accent} />
           <View style={styles.quickLinkText}>
             <Text style={styles.quickLinkTitle}>Lock the app</Text>
             <Text style={styles.quickLinkSub}>Require auth to come back</Text>
           </View>
-        </View>
+        </Pressable>
         <Pressable
           onPress={() => logout.mutate()}
           style={({ pressed }) => [
@@ -335,6 +339,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  quickLinkPressed: {
+    backgroundColor: colors.surfaceSubtle,
   },
   quickLinkDanger: {
     backgroundColor: colors.dangerTint,

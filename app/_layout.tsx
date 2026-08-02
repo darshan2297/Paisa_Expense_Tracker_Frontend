@@ -6,7 +6,10 @@ import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient } from '@/api/queryClient';
+import { AppLockScreen } from '@/features/appLock/AppLockScreen';
+import { hydrateAppLock, useRelockOnForeground } from '@/features/appLock/hooks';
 import { hydrateSession } from '@/features/auth/hooks';
+import { useAppLockStore } from '@/stores/appLockStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { colors } from '@/theme/colors';
 import { useAppFonts } from '@/theme/typography';
@@ -60,9 +63,13 @@ function useAuthGuard() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useAppFonts();
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const isAppLockHydrating = useAppLockStore((state) => state.isHydrating);
+  const isLocked = useAppLockStore((state) => state.isLocked);
 
   useEffect(() => {
     hydrateSession();
+    hydrateAppLock();
   }, []);
 
   useEffect(() => {
@@ -72,21 +79,32 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   useAuthGuard();
+  useRelockOnForeground();
 
   if (!fontsLoaded && !fontError) {
     // Native splash screen is still visible — render nothing underneath it.
     return null;
   }
 
+  const showAppLock = isAuthenticated && !isAppLockHydrating && isLocked;
+
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <AppThemeProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="+not-found" options={{ headerShown: true, title: 'Not found' }} />
-          </Stack>
+          {showAppLock ? (
+            <AppLockScreen />
+          ) : (
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen
+                name="lock-setup"
+                options={{ headerShown: true, title: 'Set up app lock', presentation: 'modal' }}
+              />
+              <Stack.Screen name="+not-found" options={{ headerShown: true, title: 'Not found' }} />
+            </Stack>
+          )}
         </AppThemeProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
