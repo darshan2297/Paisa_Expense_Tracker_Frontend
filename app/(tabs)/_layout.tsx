@@ -4,8 +4,8 @@ import { Text } from 'react-native';
 import { colors } from '@/theme/colors';
 
 /**
- * Bottom tab navigator. Only "Home" exists for now — more tabs (e.g.
- * Transactions, Budgets, Profile) are added as their features land.
+ * Bottom tab navigator. Only "Home" and "Profile" exist for now — more tabs
+ * (Transactions, Budgets, ...) are added as their features land.
  */
 export default function TabsLayout() {
   return (
@@ -25,6 +25,13 @@ export default function TabsLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>⌂</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>☺</Text>,
         }}
       />
     </Tabs>

@@ -1,21 +1,26 @@
 import { create } from 'zustand';
 
 /**
- * Placeholder session store.
- *
- * TODO(auth-phase): not wired to real auth yet — nothing calls
- * `setAuthenticated` today. Once login/register are implemented this will
- * also hold the current user profile and drive route guarding between the
- * (auth) and (tabs) groups.
+ * Client-only auth session state. This is deliberately NOT server state
+ * (no TanStack Query here) — see docs/CODING_STANDARDS.md's server-vs-client
+ * state rule. `isAuthenticated` is set optimistically from whether a token
+ * exists in SecureStore (see `hydrateSession` in features/auth), not from a
+ * verified round-trip to the server; an actually-invalid token is caught
+ * reactively by the first API call that gets a 401 (src/api/client.ts).
  */
 export type SessionState = {
   isAuthenticated: boolean;
+  /** True until the initial SecureStore check on app start has completed. */
+  isHydrating: boolean;
   setAuthenticated: (isAuthenticated: boolean) => void;
+  setHydrating: (isHydrating: boolean) => void;
 };
 
 export const useSessionStore = create<SessionState>((set) => ({
   isAuthenticated: false,
+  isHydrating: true,
   setAuthenticated: (isAuthenticated) => set({ isAuthenticated }),
+  setHydrating: (isHydrating) => set({ isHydrating }),
 }));
 
 export default useSessionStore;

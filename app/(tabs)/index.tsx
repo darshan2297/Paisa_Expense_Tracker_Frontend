@@ -1,19 +1,20 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { StatTile } from '@/components/StatTile';
+import { useProfile } from '@/features/profile/hooks';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
 import { compactINR } from '@/utils/currency';
 
 /**
- * Placeholder dashboard/welcome screen.
- *
- * Static, hard-coded numbers only — this exists to prove out the app shell
- * (navigation, theme, shared components) end to end. Real balances,
- * transactions, etc. arrive with the relevant feature phases.
+ * Dashboard/welcome screen. The greeting is real (fetched from the
+ * authenticated /profile endpoint) - the balance/spend tiles below are still
+ * static placeholders, since Accounts/Transactions (F2/F3) don't exist yet.
  */
 export default function DashboardScreen() {
+  const profile = useProfile();
+
   return (
     <ScrollView
       style={styles.screen}
@@ -21,8 +22,12 @@ export default function DashboardScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>Welcome to</Text>
-        <Text style={styles.title}>Paisa</Text>
+        <Text style={styles.eyebrow}>Welcome back</Text>
+        {profile.isLoading ? (
+          <ActivityIndicator color={colors.accent} style={styles.nameLoading} />
+        ) : (
+          <Text style={styles.title}>{profile.data?.name ?? 'there'}</Text>
+        )}
         <Text style={styles.subtitle}>Your finances, at a glance.</Text>
       </View>
 
@@ -55,6 +60,10 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: fontSize.sm,
     color: colors.textMuted,
+  },
+  nameLoading: {
+    alignSelf: 'flex-start',
+    marginVertical: spacing.sm,
   },
   title: {
     fontFamily: fontFamily.extrabold,
