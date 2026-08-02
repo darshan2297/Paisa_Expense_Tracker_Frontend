@@ -1,21 +1,14 @@
 import { Feather } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { DesignGridLead } from '@/components/design/DesignGrid';
 import { HeroCard } from '@/components/HeroCard';
-import { MonthSwitcher } from '@/components/MonthSwitcher';
+import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { Sheet } from '@/components/Sheet';
 import { useCategories } from '@/features/categories/hooks';
 import type { Category } from '@/features/categories/types';
@@ -30,15 +23,6 @@ import {
   useUpdateFixedCommitment,
 } from '@/features/budget/hooks';
 import type { FixedCommitment, FixedCommitmentKind } from '@/features/budget/types';
-import {
-  useBills,
-  useCreateBill,
-  useDeleteBill,
-  usePayBill,
-  useUnpayBill,
-  useToggleBillAuto,
-} from '@/features/bills/hooks';
-import type { Bill, BillKind, BillFrequency } from '@/features/bills/types';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize, moneyTextStyle } from '@/theme/typography';
@@ -83,14 +67,12 @@ type BudgetFormValues = {
 export default function PlannedScreen() {
   const [month, setMonth] = useState(currentYearMonth());
   const [addCommitmentOpen, setAddCommitmentOpen] = useState(false);
-  const [addBillOpen, setAddBillOpen] = useState(false);
   const [editCommitment, setEditCommitment] = useState<FixedCommitment | null>(null);
 
   const budgetSettings = useBudgetSettings();
   const budgetSummary = useBudgetSummary(month);
   const updateBudgetSettings = useUpdateBudgetSettings();
   const fixedCommitments = useFixedCommitments(month);
-  const bills = useBills(month);
   const toggleFixedCommitmentPaid = useToggleFixedCommitmentPaid(month);
   const deleteFixedCommitment = useDeleteFixedCommitment(month);
 
@@ -127,231 +109,241 @@ export default function PlannedScreen() {
     ? thresholdNote(budgetSummary.data.pct_remaining, alertPct)
     : null;
 
-  return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <MonthSwitcher month={month} onChange={setMonth} />
+  const fixedList = fixedCommitments.data ?? [];
+  const fixedTotal = useMemo(
+    () => fixedList.reduce((sum, c) => sum + Number(c.amount), 0),
+    [fixedList],
+  );
+  const fixedPaidCount = fixedList.filter((c) => c.paid_this_month).length;
+  const fixedDueTotal = useMemo(
+    () => fixedList.filter((c) => !c.paid_this_month).reduce((sum, c) => sum + Number(c.amount), 0),
+    [fixedList],
+  );
 
-      {budgetSummary.data ? (
-        <HeroCard style={styles.hero}>
-          <Text style={styles.heroEyebrow}>Remaining · {formatYearMonthLabel(month)}</Text>
-          <Text style={[styles.heroValue, moneyTextStyle]}>
-            {formatINR(Number(budgetSummary.data.remaining))}
+  const budgetHero = budgetSummary.data ? (
+    <HeroCard style={styles.hero}>
+      <Text style={styles.heroEyebrow}>Remaining · {formatYearMonthLabel(month)}</Text>
+      <Text style={[styles.heroValue, moneyTextStyle]}>
+        {formatINR(Number(budgetSummary.data.remaining))}
+      </Text>
+      <View style={styles.heroBarTrack}>
+        <View
+          style={[
+            styles.heroBarFill,
+            {
+              width: `${Math.max(0, Math.min(100, budgetSummary.data.pct_remaining))}%`,
+              backgroundColor:
+                budgetSummary.data.pct_remaining <= alertPct ? colors.heroDanger : '#8079FF',
+            },
+          ]}
+        />
+      </View>
+      <Text style={styles.heroNote}>
+        {formatINR(Number(budgetSummary.data.spent))} spent ·{' '}
+        {budgetSummary.data.days_remaining_in_month} days left
+      </Text>
+      <View style={styles.heroStats}>
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatLabel}>Left per day</Text>
+          <Text style={[styles.heroStatValue, moneyTextStyle]}>
+            {formatINR(Number(budgetSummary.data.per_day_left))}
           </Text>
-          <View style={styles.heroBarTrack}>
-            <View
-              style={[
-                styles.heroBarFill,
-                {
-                  width: `${Math.max(0, Math.min(100, budgetSummary.data.pct_remaining))}%`,
-                  backgroundColor:
-                    budgetSummary.data.pct_remaining <= alertPct ? colors.heroDanger : '#8079FF',
-                },
-              ]}
-            />
-          </View>
-          <Text style={styles.heroNote}>
-            {formatINR(Number(budgetSummary.data.per_day_left))} left per day ·{' '}
-            {budgetSummary.data.days_remaining_in_month} days to go
-          </Text>
-        </HeroCard>
+        </View>
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatLabel}>Fixed committed</Text>
+          <Text style={[styles.heroStatValue, moneyTextStyle]}>{formatINR(fixedTotal)}</Text>
+        </View>
+      </View>
+    </HeroCard>
+  ) : null;
+
+  const budgetPanel = (
+    <Card size="large" style={styles.budgetCard}>
+      <Text style={styles.cardTitle}>Monthly spending budget</Text>
+      <Text style={styles.cardSubtitle}>Applies to every month unless you change it.</Text>
+
+      <View style={styles.amountField}>
+        <Text style={styles.amountSymbol}>₹</Text>
+        <TextInput
+          value={amount}
+          onChangeText={(value) => setValue('monthly_amount', value)}
+          keyboardType="numeric"
+          style={styles.amountInput}
+        />
+      </View>
+      <View style={styles.presetRow}>
+        {AMOUNT_PRESETS.map((preset) => (
+          <PresetChip
+            key={preset}
+            label={formatINR(preset)}
+            active={amount === String(preset)}
+            onPress={() => setValue('monthly_amount', String(preset))}
+          />
+        ))}
+      </View>
+
+      <View style={styles.divider} />
+
+      <Text style={styles.sectionLabel}>
+        Warn me when <Text style={styles.sectionLabelAccent}>{alertPct}%</Text> of the budget is
+        left
+      </Text>
+      <View style={styles.presetRow}>
+        {ALERT_PCT_PRESETS.map((preset) => (
+          <PresetChip
+            key={preset}
+            label={`${preset}%`}
+            active={alertPct === preset}
+            onPress={() => setValue('alert_pct', preset)}
+          />
+        ))}
+      </View>
+      {note ? (
+        <View style={[styles.noteBox, note.danger ? styles.noteBoxDanger : styles.noteBoxNeutral]}>
+          <Text style={[styles.noteText, note.danger && styles.noteTextDanger]}>{note.text}</Text>
+        </View>
       ) : null}
 
-      <Card size="large" style={styles.budgetCard}>
-        <Text style={styles.cardTitle}>Monthly spending budget</Text>
-        <Text style={styles.cardSubtitle}>Applies to every month unless you change it.</Text>
+      <View style={styles.divider} />
 
-        <View style={styles.amountField}>
-          <Text style={styles.amountSymbol}>₹</Text>
-          <TextInput
-            value={amount}
-            onChangeText={(value) => setValue('monthly_amount', value)}
-            keyboardType="numeric"
-            style={styles.amountInput}
+      <Text style={styles.sectionLabel}>
+        Remind me <Text style={styles.sectionLabelAccent}>{leadDays} days</Text> before any EMI or
+        premium is due
+      </Text>
+      <View style={styles.presetRow}>
+        {LEAD_DAY_PRESETS.map((preset) => (
+          <PresetChip
+            key={preset}
+            label={`${preset}d`}
+            active={leadDays === preset}
+            onPress={() => setValue('reminder_lead_days', preset)}
           />
-        </View>
-        <View style={styles.presetRow}>
-          {AMOUNT_PRESETS.map((preset) => (
-            <PresetChip
-              key={preset}
-              label={formatINR(preset)}
-              active={amount === String(preset)}
-              onPress={() => setValue('monthly_amount', String(preset))}
-            />
-          ))}
-        </View>
+        ))}
+      </View>
 
-        <View style={styles.divider} />
+      <Button label="Save budget" onPress={saveBudget} loading={updateBudgetSettings.isPending} />
+    </Card>
+  );
 
-        <Text style={styles.sectionLabel}>
-          Warn me when <Text style={styles.sectionLabelAccent}>{alertPct}%</Text> of the budget is
-          left
-        </Text>
-        <View style={styles.presetRow}>
-          {ALERT_PCT_PRESETS.map((preset) => (
-            <PresetChip
-              key={preset}
-              label={`${preset}%`}
-              active={alertPct === preset}
-              onPress={() => setValue('alert_pct', preset)}
-            />
-          ))}
-        </View>
-        {note ? (
-          <View
-            style={[styles.noteBox, note.danger ? styles.noteBoxDanger : styles.noteBoxNeutral]}
-          >
-            <Text style={[styles.noteText, note.danger && styles.noteTextDanger]}>{note.text}</Text>
-          </View>
-        ) : null}
+  return (
+    <>
+      <ScreenScaffold month={month} onMonthChange={setMonth}>
+        <DesignGridLead lead={budgetPanel} side={budgetHero ?? <View />} />
 
-        <View style={styles.divider} />
-
-        <Text style={styles.sectionLabel}>
-          Remind me <Text style={styles.sectionLabelAccent}>{leadDays} days</Text> before any EMI or
-          premium is due
-        </Text>
-        <View style={styles.presetRow}>
-          {LEAD_DAY_PRESETS.map((preset) => (
-            <PresetChip
-              key={preset}
-              label={`${preset}d`}
-              active={leadDays === preset}
-              onPress={() => setValue('reminder_lead_days', preset)}
-            />
-          ))}
-        </View>
-
-        <Button label="Save budget" onPress={saveBudget} loading={updateBudgetSettings.isPending} />
-      </Card>
-
-      <View style={styles.commitmentsCard}>
-        <View style={styles.commitmentsHeader}>
-          <View style={styles.commitmentsHeaderText}>
-            <Text style={styles.cardTitle}>Fixed monthly commitments</Text>
-            <Text style={[styles.cardSubtitle, styles.commitmentsSubtitle]}>
-              EMIs, loans and subscriptions that repeat every month.
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => setAddCommitmentOpen(true)}
-            style={({ pressed }) => [
-              styles.addCommitmentButton,
-              pressed && styles.addCommitmentButtonPressed,
-            ]}
-          >
-            <Feather name="plus" size={14} color="#453F37" />
-            <Text style={styles.addCommitmentButtonLabel}>Add commitment</Text>
-          </Pressable>
-        </View>
-
-        {fixedCommitments.isLoading ? (
-          <ActivityIndicator color={colors.accent} style={styles.loading} />
-        ) : fixedCommitments.data && fixedCommitments.data.length > 0 ? (
-          fixedCommitments.data.map((commitment) => (
-            <View key={commitment.id} style={styles.commitmentRow}>
-              <View
-                style={[
-                  styles.commitmentTag,
-                  { backgroundColor: `${commitment.category.color}26` },
-                ]}
-              >
-                <Text style={[styles.commitmentTagText, { color: commitment.category.color }]}>
-                  {KIND_LABELS[commitment.kind].slice(0, 3).toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.commitmentText}>
-                <Text style={styles.commitmentName} numberOfLines={1}>
-                  {commitment.name}
-                </Text>
-                <Text style={styles.commitmentSub}>
-                  {KIND_LABELS[commitment.kind]} · due {commitment.due_day}
-                  {commitment.due_day === 1
-                    ? 'st'
-                    : commitment.due_day === 2
-                      ? 'nd'
-                      : commitment.due_day === 3
-                        ? 'rd'
-                        : 'th'}
-                </Text>
-              </View>
-              <Text style={[styles.commitmentAmount, moneyTextStyle]}>
-                {formatINR(Number(commitment.amount))}
+        <View style={styles.commitmentsCard}>
+          <View style={styles.commitmentsHeader}>
+            <View style={styles.commitmentsHeaderText}>
+              <Text style={styles.cardTitle}>Fixed monthly commitments</Text>
+              <Text style={[styles.cardSubtitle, styles.commitmentsSubtitle]}>
+                EMIs, loans and subscriptions that repeat every month.
               </Text>
-              <Pressable
-                onPress={() => toggleFixedCommitmentPaid.mutate(commitment.id)}
-                style={[
-                  styles.commitmentAction,
-                  commitment.paid_this_month
-                    ? styles.commitmentActionPaid
-                    : styles.commitmentActionUnpaid,
-                ]}
-              >
-                <Text
+            </View>
+            <Pressable
+              onPress={() => setAddCommitmentOpen(true)}
+              style={({ pressed }) => [
+                styles.addCommitmentButton,
+                pressed && styles.addCommitmentButtonPressed,
+              ]}
+            >
+              <Feather name="plus" size={14} color="#453F37" />
+              <Text style={styles.addCommitmentButtonLabel}>Add commitment</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.commitmentsSubHeader}>
+            <Text style={styles.commitmentsSubLabel}>
+              {fixedPaidCount} of {fixedList.length} paid this month
+            </Text>
+            <Text style={styles.commitmentsSubDue}>{formatINR(fixedDueTotal)} due</Text>
+          </View>
+
+          {fixedCommitments.isLoading ? (
+            <ActivityIndicator color={colors.accent} style={styles.loading} />
+          ) : fixedList.length > 0 ? (
+            fixedList.map((commitment) => (
+              <View key={commitment.id} style={styles.commitmentRow}>
+                <View
                   style={[
-                    styles.commitmentActionLabel,
-                    commitment.paid_this_month && styles.commitmentActionLabelPaid,
+                    styles.commitmentTag,
+                    { backgroundColor: `${commitment.category.color}26` },
                   ]}
                 >
-                  {commitment.paid_this_month ? 'Paid' : 'Mark paid'}
+                  <Text style={[styles.commitmentTagText, { color: commitment.category.color }]}>
+                    {KIND_LABELS[commitment.kind].slice(0, 3).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.commitmentText}>
+                  <Text style={styles.commitmentName} numberOfLines={1}>
+                    {commitment.name}
+                  </Text>
+                  <Text style={styles.commitmentSub}>
+                    {KIND_LABELS[commitment.kind]} · due {commitment.due_day}
+                    {commitment.due_day === 1
+                      ? 'st'
+                      : commitment.due_day === 2
+                        ? 'nd'
+                        : commitment.due_day === 3
+                          ? 'rd'
+                          : 'th'}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.commitmentStatus,
+                    commitment.paid_this_month
+                      ? styles.commitmentStatusPaid
+                      : styles.commitmentStatusDue,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.commitmentStatusLabel,
+                      commitment.paid_this_month && styles.commitmentStatusLabelPaid,
+                    ]}
+                  >
+                    {commitment.paid_this_month ? 'Paid' : 'Due'}
+                  </Text>
+                </View>
+                <Text style={[styles.commitmentAmount, moneyTextStyle]}>
+                  {formatINR(Number(commitment.amount))}
                 </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setEditCommitment(commitment)}
-                hitSlop={8}
-                style={styles.editButton}
-              >
-                <Feather name="edit-2" size={15} color={colors.textCaption} />
-              </Pressable>
-              <Pressable
-                onPress={() => deleteFixedCommitment.mutate(commitment.id)}
-                hitSlop={8}
-                style={styles.deleteButton}
-              >
-                <Feather name="trash-2" size={15} color={colors.textCaption} />
-              </Pressable>
+                <Pressable
+                  onPress={() => toggleFixedCommitmentPaid.mutate(commitment.id)}
+                  style={[
+                    styles.commitmentAction,
+                    commitment.paid_this_month
+                      ? styles.commitmentActionPaid
+                      : styles.commitmentActionUnpaid,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.commitmentActionLabel,
+                      commitment.paid_this_month && styles.commitmentActionLabelPaid,
+                    ]}
+                  >
+                    {commitment.paid_this_month ? 'Paid' : 'Mark paid'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => deleteFixedCommitment.mutate(commitment.id)}
+                  hitSlop={8}
+                  style={styles.deleteButton}
+                >
+                  <Feather name="trash-2" size={15} color={colors.textCaption} />
+                </Pressable>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateTitle}>No fixed commitments yet</Text>
+              <Text style={styles.emptyStateSub}>
+                Add your home loan, personal loan or EMI once — it repeats every month.
+              </Text>
             </View>
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateTitle}>No fixed commitments yet</Text>
-            <Text style={styles.emptyStateSub}>
-              Add your home loan, personal loan or EMI once — it repeats every month.
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Bills & reminders</Text>
-          <Pressable
-            onPress={() => setAddBillOpen(true)}
-            style={({ pressed }) => [
-              styles.addCommitmentButton,
-              pressed && styles.addCommitmentButtonPressed,
-            ]}
-          >
-            <Feather name="plus" size={14} color="#453F37" />
-            <Text style={styles.addCommitmentButtonLabel}>Add bill</Text>
-          </Pressable>
+          )}
         </View>
-        {bills.isLoading ? (
-          <ActivityIndicator color={colors.accent} style={styles.loading} />
-        ) : bills.data && bills.data.length > 0 ? (
-          bills.data.map((bill) => <BillRow key={bill.id} bill={bill} month={month} />)
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateTitle}>No bills yet</Text>
-            <Text style={styles.emptyStateSub}>
-              Electricity, broadband, subscriptions — one-off or recurring.
-            </Text>
-          </View>
-        )}
-      </View>
+      </ScreenScaffold>
 
       <AddCommitmentSheet
         visible={addCommitmentOpen}
@@ -364,8 +356,7 @@ export default function PlannedScreen() {
         month={month}
         onClose={() => setEditCommitment(null)}
       />
-      <AddBillSheet visible={addBillOpen} onClose={() => setAddBillOpen(false)} month={month} />
-    </ScrollView>
+    </>
   );
 }
 
@@ -513,47 +504,6 @@ function AddCommitmentSheet({ visible, month, onClose }: AddCommitmentSheetProps
   );
 }
 
-function BillRow({ bill, month }: { bill: Bill; month: string }) {
-  const payBill = usePayBill(month);
-  const unpayBill = useUnpayBill(month);
-  const toggleAuto = useToggleBillAuto(month);
-  const deleteBill = useDeleteBill(month);
-  const isPaid = bill.paid_on !== null;
-
-  return (
-    <View style={styles.commitmentRow}>
-      <View style={styles.commitmentText}>
-        <Text style={styles.commitmentName} numberOfLines={1}>
-          {bill.name}
-        </Text>
-        <Text style={styles.commitmentSub}>
-          {bill.frequency} · {bill.status_label}
-        </Text>
-      </View>
-      <Text style={[styles.commitmentAmount, moneyTextStyle]}>
-        {formatINR(Number(bill.amount))}
-      </Text>
-      <Pressable
-        onPress={() => (isPaid ? unpayBill.mutate(bill.id) : payBill.mutate(bill.id))}
-        style={[
-          styles.commitmentAction,
-          isPaid ? styles.commitmentActionPaid : styles.commitmentActionUnpaid,
-        ]}
-      >
-        <Text style={[styles.commitmentActionLabel, isPaid && styles.commitmentActionLabelPaid]}>
-          {isPaid ? 'Paid' : 'Pay'}
-        </Text>
-      </Pressable>
-      <Pressable onPress={() => toggleAuto.mutate(bill.id)} hitSlop={8}>
-        <Feather name={bill.auto_pay ? 'zap' : 'zap-off'} size={15} color={colors.accent} />
-      </Pressable>
-      <Pressable onPress={() => deleteBill.mutate(bill.id)} hitSlop={8} style={styles.deleteButton}>
-        <Feather name="trash-2" size={15} color={colors.textCaption} />
-      </Pressable>
-    </View>
-  );
-}
-
 function EditCommitmentSheet({
   visible,
   commitment,
@@ -622,79 +572,7 @@ function EditCommitmentForm({
   );
 }
 
-const BILL_KINDS: BillKind[] = ['electricity', 'internet', 'mobile', 'credit_card', 'gas', 'other'];
-const BILL_FREQS: BillFrequency[] = ['monthly', 'quarterly', 'yearly', 'weekly'];
-
-function AddBillSheet({
-  visible,
-  month,
-  onClose,
-}: {
-  visible: boolean;
-  month: string;
-  onClose: () => void;
-}) {
-  const createBill = useCreateBill(month);
-  const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState(`${month}-05`);
-  const [kind, setKind] = useState<BillKind>('electricity');
-  const [frequency, setFrequency] = useState<BillFrequency>('monthly');
-
-  return (
-    <Sheet visible={visible} onClose={onClose}>
-      <Text style={styles.sheetTitle}>Add bill</Text>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Bill name"
-        style={styles.noteInput}
-      />
-      <View style={styles.presetRow}>
-        {BILL_KINDS.map((k) => (
-          <PresetChip key={k} label={k} active={kind === k} onPress={() => setKind(k)} />
-        ))}
-      </View>
-      <TextInput
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="numeric"
-        style={styles.noteInput}
-      />
-      <TextInput
-        value={dueDate}
-        onChangeText={setDueDate}
-        placeholder="YYYY-MM-DD"
-        style={styles.noteInput}
-      />
-      <View style={styles.presetRow}>
-        {BILL_FREQS.map((f) => (
-          <PresetChip key={f} label={f} active={frequency === f} onPress={() => setFrequency(f)} />
-        ))}
-      </View>
-      <Button
-        label="Save bill"
-        loading={createBill.isPending}
-        onPress={() =>
-          createBill.mutate(
-            { name, kind, amount, due_date: dueDate, frequency },
-            { onSuccess: onClose },
-          )
-        }
-      />
-    </Sheet>
-  );
-}
-
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  content: {
-    padding: spacing.xl,
-    gap: 14,
-  },
   hero: {
     paddingVertical: 24,
     paddingHorizontal: 26,
@@ -727,6 +605,29 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: 12.5,
     color: colors.heroTextMuted,
+  },
+  heroStats: {
+    flexDirection: 'row',
+    gap: 11,
+    marginTop: 20,
+  },
+  heroStat: {
+    flex: 1,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+    borderRadius: 14,
+    backgroundColor: 'rgba(252,250,247,.07)',
+  },
+  heroStatLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 11.5,
+    color: 'rgba(252,250,247,.5)',
+  },
+  heroStatValue: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 18,
+    color: colors.heroText,
+    marginTop: 4,
   },
   budgetCard: {
     paddingVertical: 24,
@@ -848,6 +749,29 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  commitmentsSubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    backgroundColor: '#F8F5F1',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  commitmentsSubLabel: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 11,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: '#948E85',
+  },
+  commitmentsSubDue: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12,
+    color: '#948E85',
+  },
   commitmentsSubtitle: {
     marginBottom: 0,
   },
@@ -910,6 +834,25 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: 11.5,
     color: colors.textCaption,
+  },
+  commitmentStatus: {
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+    borderRadius: radius.pill,
+  },
+  commitmentStatusPaid: {
+    backgroundColor: colors.successTint,
+  },
+  commitmentStatusDue: {
+    backgroundColor: colors.dangerTint,
+  },
+  commitmentStatusLabel: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 11.5,
+    color: colors.dangerValue,
+  },
+  commitmentStatusLabelPaid: {
+    color: colors.success,
   },
   commitmentAmount: {
     fontSize: 14.5,

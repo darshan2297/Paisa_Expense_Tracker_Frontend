@@ -88,7 +88,7 @@ export default function OverviewScreen() {
           icon="shield"
           background="#E5EEF8"
           foreground="#3E6E9E"
-          onPress={() => router.push('/(tabs)/policy' as never)}
+          onPress={() => router.push('/(tabs)/policy')}
         />
         <PillarCard
           label="On loan"
