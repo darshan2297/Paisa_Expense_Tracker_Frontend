@@ -33,3 +33,31 @@ export function formatDateTime(date: Date | string | number): string {
 export function formatMonthYear(date: Date | string | number): string {
   return new Date(date).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 }
+
+/**
+ * "YYYY-MM" month-scoping helpers, shared by the Overview/Transactions/
+ * Planned screens - each keeps its own selected-month `useState`, but all
+ * three navigate it the same way (prev/next month, "this month" default).
+ */
+
+/** e.g. "2026-08" for the current wall-clock month. */
+export function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** `shiftYearMonth("2026-08", -1)` -> `"2026-07"`. */
+export function shiftYearMonth(yearMonth: string, delta: number): string {
+  const [year, month] = yearMonth.split('-').map(Number);
+  const shifted = new Date(year, month - 1 + delta, 1);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** `formatYearMonthLabel("2026-08")` -> `"August 2026"`. */
+export function formatYearMonthLabel(yearMonth: string): string {
+  const [year, month] = yearMonth.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
+}

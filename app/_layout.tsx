@@ -10,6 +10,7 @@ import { AppLockScreen } from '@/features/appLock/AppLockScreen';
 import { hydrateAppLock, useRelockOnForeground } from '@/features/appLock/hooks';
 import { hydrateSession } from '@/features/auth/hooks';
 import { useAppLockStore } from '@/stores/appLockStore';
+import { useOnboardingFlowStore } from '@/stores/onboardingFlowStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { colors } from '@/theme/colors';
 import { useAppFonts } from '@/theme/typography';
@@ -35,30 +36,64 @@ function AppThemeProvider({ children }: PropsWithChildren) {
 }
 
 /**
- * Redirects between the (auth) and (tabs) route groups based on session
- * state - the standard Expo Router auth-guard pattern. Does nothing until
- * `hydrateSession()` (called once below) has resolved, so it never redirects
- * based on the store's default `isAuthenticated: false` before the real
- * SecureStore check has had a chance to run.
+ * Central routing guard, run once hydration settles. Three rules, in order:
+ *
+ * 1. Not authenticated + not already in (auth) -> send to Register (if
+ *    bootstrap registration is still open) or Login.
+ * 2. Authenticated but no PIN configured yet + not already in onboarding or
+ *    mid-flow on (auth)/register|login -> force /onboarding.
+ * 3. Authenticated + PIN configured + still stuck in (auth) and not mid-flow
+ *    -> send to /(tabs).
+ *
+ * `onboardingFlowStore.inProgress` keeps the guard from yanking the user to
+ * /(tabs) the moment a PIN is saved but before the optional biometric step
+ * finishes — all on the same screen as register/login.
  */
 function useAuthGuard() {
   const segments = useSegments();
   const router = useRouter();
   const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
-  const isHydrating = useSessionStore((state) => state.isHydrating);
+  const isSessionHydrating = useSessionStore((state) => state.isHydrating);
+  const registrationOpen = useSessionStore((state) => state.registrationOpen);
+  const hasPinConfigured = useAppLockStore((state) => state.hasPinConfigured);
+  const isAppLockHydrating = useAppLockStore((state) => state.isHydrating);
+  const onboardingInProgress = useOnboardingFlowStore((state) => state.inProgress);
 
   useEffect(() => {
-    if (isHydrating) {
+    if (isSessionHydrating || isAppLockHydrating) {
       return;
     }
-    const inAuthGroup = segments[0] === '(auth)';
 
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/(auth)/login');
-    } else if (isAuthenticated && inAuthGroup) {
+    const inAuthGroup = segments[0] === '(auth)';
+    const inOnboardingGroup = segments[0] === 'onboarding';
+
+    if (!isAuthenticated) {
+      if (!inAuthGroup) {
+        router.replace(registrationOpen ? '/(auth)/register' : '/(auth)/login');
+      }
+      return;
+    }
+
+    if (!hasPinConfigured) {
+      if (!inOnboardingGroup && !inAuthGroup) {
+        router.replace('/onboarding');
+      }
+      return;
+    }
+
+    if (inAuthGroup && !onboardingInProgress) {
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isHydrating, segments, router]);
+  }, [
+    isAuthenticated,
+    isSessionHydrating,
+    isAppLockHydrating,
+    registrationOpen,
+    hasPinConfigured,
+    onboardingInProgress,
+    segments,
+    router,
+  ]);
 }
 
 export default function RootLayout() {
@@ -98,6 +133,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="(auth)" />
+              {/* onboarding/index.tsx — resume PIN setup if the app was closed mid-flow */}
               <Stack.Screen
                 name="lock-setup"
                 options={{ headerShown: true, title: 'Set up app lock', presentation: 'modal' }}

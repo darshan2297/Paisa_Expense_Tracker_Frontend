@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -11,9 +11,12 @@ import { HeroCard } from '@/components/HeroCard';
 import { IconChip } from '@/components/IconChip';
 import { Input } from '@/components/Input';
 import { SettingRow } from '@/components/SettingRow';
+import { isBiometricAvailable } from '@/features/appLock/biometrics';
+import { setBiometricEnabled } from '@/features/appLock/biometricPreference';
 import { useLogout } from '@/features/auth/hooks';
 import { useProfile, useUpdateProfile } from '@/features/profile/hooks';
 import type { Profile, ProfileUpdatePayload } from '@/features/profile/types';
+import { useAppLockStore } from '@/stores/appLockStore';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
@@ -38,6 +41,14 @@ export default function ProfileScreen() {
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
   const logout = useLogout();
+  const hasPinConfigured = useAppLockStore((state) => state.hasPinConfigured);
+  const biometricEnabled = useAppLockStore((state) => state.biometricEnabled);
+  const setStoreBiometricEnabled = useAppLockStore((state) => state.setBiometricEnabled);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+
+  useEffect(() => {
+    isBiometricAvailable().then(setBiometricSupported);
+  }, []);
 
   const { control, handleSubmit, reset } = useForm<ProfileFormValues>({
     defaultValues: { name: '', phone: '', city: '', occupation: '' },
@@ -68,6 +79,11 @@ export default function ProfileScreen() {
 
   function togglePreference(field: keyof ProfileUpdatePayload, value: boolean) {
     updateProfile.mutate({ [field]: value });
+  }
+
+  async function onToggleBiometric(value: boolean) {
+    await setBiometricEnabled(value);
+    setStoreBiometricEnabled(value);
   }
 
   if (profile.isLoading || !profile.data) {
@@ -198,6 +214,19 @@ export default function ProfileScreen() {
           />
         </View>
       </Card>
+
+      {hasPinConfigured && biometricSupported ? (
+        <Card size="large" style={styles.section}>
+          <Text style={styles.sectionTitle}>App Lock</Text>
+          <SettingRow
+            label="Use Face ID / Fingerprint"
+            sub="Unlock faster instead of typing your PIN"
+            value={biometricEnabled}
+            onValueChange={onToggleBiometric}
+            showDivider={false}
+          />
+        </Card>
+      ) : null}
 
       <View style={styles.quickLinks}>
         {/* Security & privacy has no onPress yet - the full Security

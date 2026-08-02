@@ -27,9 +27,20 @@ distinctions worth knowing before styling anything new:
   and input radius 13 (`radius.chip` / `radius.input`), recessed nested-tile radius 14
   (`radius.tileSmall`), pill radius 99, spacing scale 4/8/12/16/20/24.
 
+The palette has **two dark contexts, and they are not the same**: `hero*` is the dark
+card sitting on the light app background, while `auth*` is the full-bleed
+violet-to-black backdrop behind the onboarding flow. They share their ink tokens
+(`heroText` / `heroTextMuted` / `heroTextFaint`, plus `heroDanger` for error copy that
+`danger` is far too dim to carry on black) but not their surfaces — reaching for
+`heroGradientStart` on an onboarding screen gets you the card's warm brown-black
+instead of the flow's violet.
+
 ## Shared Components (`src/components/`)
 
-- `Button.tsx` — primary (near-black CTA), secondary (bordered), danger variants.
+- `Button.tsx` — primary (near-black CTA), secondary (bordered), danger and `onDark`
+  (the cream inversion of primary, for the onboarding backdrop) variants. `size="lg"`
+  is the 48px full-width CTA that anchors a whole screen; the default is the in-card
+  height.
 - `Card.tsx` — the canonical bordered/rounded surface every panel is built from.
 - `StatTile.tsx` — label → large tabular-nums value → muted subtext, with a `tone`
   prop for success/danger value coloring.
@@ -50,6 +61,23 @@ distinctions worth knowing before styling anything new:
 - Add a new shared component here only when a UI pattern repeats across **two or
   more** features — a one-off screen-specific element belongs in that feature's own
   `components/` folder instead.
+
+## Onboarding Flow Components (`src/features/auth/components/`)
+
+Feature-local on purpose — everything here is styled for the dark full-bleed backdrop
+and has no second caller yet.
+
+- `AuthScreen.tsx` — the flow's shared chrome: violet-to-black backdrop, brand mark,
+  headline pair and step rail. Screens pass only their own body. The backdrop is a
+  screen-level `LinearGradient` rather than a `HeroCard` because the mockup bleeds it
+  behind the status bar, which a bordered rounded card can't do.
+- `OnboardingSteps.tsx` — the Account → PIN → Biometrics rail. Currently only
+  `(auth)/register` and `(auth)/login` render it; the PIN and biometric screens still
+  need wiring up so the flow doesn't lose its progress marker halfway through.
+- `AuthModeToggle.tsx` — segmented Create account / Sign in switch.
+- `AuthField.tsx` — text field for the dark backdrop. Deliberately not a `tone` prop
+  on the shared `Input`: beyond the palette these differ in label case, tracking and
+  metrics, so one component wearing both hats would be two components in a trench coat.
 
 **Before building any new screen**: go back to the actual mockup source for that
 screen's structure (hero layout, card composition, exact spacing) rather than

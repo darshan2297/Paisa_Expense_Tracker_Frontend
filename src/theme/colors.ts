@@ -43,16 +43,35 @@ export const colors = {
   heroGradientStart: '#2A2620',
   heroGradientEnd: '#15120F',
   heroText: '#FCFAF7',
+  /** Uppercase eyebrow labels on dark cards ("Net balance", "Remaining · Month") — distinct from `heroTextMuted`, which is for the note line under the headline value. */
+  heroTextEyebrow: 'rgba(252,250,247,.5)',
   heroTextMuted: 'rgba(252,250,247,.6)',
   heroTextFaint: 'rgba(252,250,247,.42)',
   heroGlow: 'rgba(124,116,255,.4)',
   heroSurfaceSubtle: 'rgba(252,250,247,.07)',
   heroBorderSubtle: 'rgba(252,250,247,.18)',
   heroFillSubtle: 'rgba(252,250,247,.08)',
+  /** Error ink on a dark surface — `danger` is far too dim to read there. */
+  heroDanger: '#F0B49F',
 
   // --- Brand gradient (logo mark, avatar/initials chips) ---
   brandGradientStart: '#7C74FF',
   brandGradientEnd: '#4B43C9',
+
+  // --- Auth / onboarding full-screen backdrop (Account -> PIN -> Biometrics) ---
+  // A violet-tinted top fading to the same warm near-black the hero card ends
+  // on, so the onboarding flow reads as one surface. Three stops, not two: a
+  // straight start->end interpolation stays purple far too long and loses the
+  // mockup's quick falloff below the headline.
+  authGradientStart: '#332D5B',
+  authGradientMid: '#1C1927',
+  authGradientEnd: '#100F0D',
+  /** Soft violet halo behind the logo mark. Same trick as `heroGlow`. */
+  authGlow: 'rgba(124,116,255,.28)',
+  /** Completed/current segment of the step indicator rail. */
+  authStepActive: '#A79FF5',
+  /** Upcoming segments of the step indicator rail. */
+  authStepTrack: 'rgba(252,250,247,.14)',
 } as const;
 
 export type ColorName = keyof typeof colors;

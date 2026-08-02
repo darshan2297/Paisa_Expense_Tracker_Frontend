@@ -3,6 +3,12 @@ export type LoginPayload = {
   password: string;
 };
 
+export type RegisterPayload = {
+  email: string;
+  password: string;
+  name: string;
+};
+
 export type ChangePasswordPayload = {
   current_password: string;
   new_password: string;

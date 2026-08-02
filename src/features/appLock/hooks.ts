@@ -4,6 +4,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { useAppLockStore } from '@/stores/appLockStore';
 import { useSessionStore } from '@/stores/sessionStore';
 
+import { isBiometricEnabled } from './biometricPreference';
 import { hasPinConfigured } from './pin';
 
 /**
@@ -13,10 +14,12 @@ import { hasPinConfigured } from './pin';
  * screen shown on cold start.
  */
 export async function hydrateAppLock(): Promise<void> {
-  const { setHasPinConfigured, setLocked, setHydrating } = useAppLockStore.getState();
+  const { setHasPinConfigured, setBiometricEnabled, setLocked, setHydrating } =
+    useAppLockStore.getState();
   try {
     const configured = await hasPinConfigured();
     setHasPinConfigured(configured);
+    setBiometricEnabled(await isBiometricEnabled());
     setLocked(configured);
   } catch {
     setHasPinConfigured(false);

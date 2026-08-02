@@ -11,19 +11,24 @@ import { create } from 'zustand';
 export type AppLockState = {
   /** Whether a PIN has been configured on this device at all. */
   hasPinConfigured: boolean;
+  /** User preference: whether biometric unlock is enabled (device support is checked separately, at point of use). */
+  biometricEnabled: boolean;
   /** Whether the lock screen should currently be shown. */
   isLocked: boolean;
   isHydrating: boolean;
   setHasPinConfigured: (value: boolean) => void;
+  setBiometricEnabled: (value: boolean) => void;
   setLocked: (value: boolean) => void;
   setHydrating: (value: boolean) => void;
 };
 
 export const useAppLockStore = create<AppLockState>((set) => ({
   hasPinConfigured: false,
+  biometricEnabled: false,
   isLocked: false,
   isHydrating: true,
   setHasPinConfigured: (value) => set({ hasPinConfigured: value }),
+  setBiometricEnabled: (value) => set({ biometricEnabled: value }),
   setLocked: (value) => set({ isLocked: value }),
   setHydrating: (value) => set({ isHydrating: value }),
 }));

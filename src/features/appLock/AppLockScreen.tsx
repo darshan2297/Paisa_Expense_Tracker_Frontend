@@ -40,17 +40,23 @@ const TABS: { key: Tab; label: string }[] = [
 export function AppLockScreen() {
   const profile = useProfile();
   const setLocked = useAppLockStore((state) => state.setLocked);
+  const biometricEnabled = useAppLockStore((state) => state.biometricEnabled);
 
   const [tab, setTab] = useState<Tab>('pin');
   const [pin, setPinInput] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(MAX_ATTEMPTS);
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Device capability AND user opt-in both have to be true - a supported
+  // device with biometrics turned off (skipped during onboarding, or
+  // disabled later in Profile) should not offer Fingerprint/Face ID here.
+  const biometricAvailable = biometricSupported && biometricEnabled;
+
   useEffect(() => {
-    isBiometricAvailable().then(setBiometricAvailable);
+    isBiometricAvailable().then(setBiometricSupported);
   }, []);
 
   const unlock = () => {
