@@ -55,7 +55,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "echo \"No tests yet - Jest is added starting from the first feature with real logic to test, see docs/DEVELOPMENT_GUIDE.md\" && exit 0"
   },
   "private": true,
   "lint-staged": {
