@@ -19,6 +19,12 @@ const HIDDEN_SCREENS = [
   'networth',
   'assets',
   'loans',
+  'health',
+  'insights',
+  'heatmap',
+  'review',
+  'timeline',
+  'reports',
 ] as const;
 
 /**
