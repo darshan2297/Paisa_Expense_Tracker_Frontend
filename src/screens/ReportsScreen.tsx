@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DesignGrid } from '@/components/design/DesignGrid';
-import { DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { Card } from '@/components/Card';
 import { colors } from '@/theme/colors';

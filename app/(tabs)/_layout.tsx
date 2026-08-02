@@ -25,11 +25,14 @@ const HIDDEN_SCREENS = [
   'review',
   'timeline',
   'reports',
+  'scanner',
+  'import',
+  'security',
 ] as const;
 
 /**
- * Tab navigator — bottom tabs for 5 primary mobile routes; AppShell adds
- * desktop sidebar. Daily + Plan module hidden routes registered through branch 4.
+ * Tab navigator — bottom tabs for 5 primary mobile routes; all design HTML
+ * modules are registered as hidden tab screens reachable from sidebar/pills.
  */
 export default function TabsLayout() {
   const { isDesktopWeb } = useResponsiveLayout();
