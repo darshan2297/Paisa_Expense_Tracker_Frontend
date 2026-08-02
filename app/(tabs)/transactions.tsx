@@ -1,18 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { CategoryPicker } from '@/components/CategoryPicker';
-import { MonthSwitcher } from '@/components/MonthSwitcher';
+import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { Sheet } from '@/components/Sheet';
 import { TransactionRow } from '@/components/TransactionRow';
 import { useCategories } from '@/features/categories/hooks';
@@ -101,95 +93,85 @@ export default function TransactionsScreen() {
   );
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
-        <MonthSwitcher month={month} onChange={setMonth} />
-        <Pressable
-          onPress={() => setAddOpen(true)}
-          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-        >
-          <Feather name="plus" size={15} color={colors.surface} />
-          <Text style={styles.addButtonLabel}>Add transaction</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.toolRow}>
-        <View style={styles.filterRow}>
-          {FILTERS.map((f) => {
-            const active = f.key === filter;
-            return (
-              <Pressable
-                key={f.key}
-                onPress={() => setFilter(f.key)}
-                style={[styles.filterChip, active && styles.filterChipActive]}
-              >
-                <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>
-                  {f.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.searchRow}>
-          <Feather name="search" size={15} color={colors.textCaption} />
-          <TextInput
-            placeholder="Search"
-            placeholderTextColor={colors.textCaption}
-            value={query}
-            onChangeText={setQuery}
-            style={styles.searchInput}
-          />
-        </View>
-
-        <View style={styles.statsRow}>
-          <View style={styles.statBlock}>
-            <Text style={styles.statBlockLabel}>Shown</Text>
-            <Text style={styles.statBlockValue}>{shownCount}</Text>
+    <>
+      <ScreenScaffold
+        month={month}
+        onMonthChange={setMonth}
+        onAddTransaction={() => setAddOpen(true)}
+      >
+        <View style={styles.toolRow}>
+          <View style={styles.filterRow}>
+            {FILTERS.map((f) => {
+              const active = f.key === filter;
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => setFilter(f.key)}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                >
+                  <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>
+                    {f.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <View style={styles.statBlock}>
-            <Text style={styles.statBlockLabel}>Net</Text>
-            <Text style={styles.statBlockValue}>{formatINR(shownNet)}</Text>
-          </View>
-        </View>
-      </View>
 
-      {transactions.isLoading ? (
-        <ActivityIndicator color={colors.accent} style={styles.loading} />
-      ) : (
-        <FlatList
-          data={groups}
-          keyExtractor={(group) => group.date}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateTitle}>Nothing here yet</Text>
-              <Text style={styles.emptyStateSub}>Add a transaction or change the month.</Text>
+          <View style={styles.searchRow}>
+            <Feather name="search" size={15} color={colors.textCaption} />
+            <TextInput
+              placeholder="Search"
+              placeholderTextColor={colors.textCaption}
+              value={query}
+              onChangeText={setQuery}
+              style={styles.searchInput}
+            />
+          </View>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statBlock}>
+              <Text style={styles.statBlockLabel}>Shown</Text>
+              <Text style={styles.statBlockValue}>{shownCount}</Text>
             </View>
-          }
-          renderItem={({ item: group }) => (
-            <View>
-              <View style={styles.groupHeader}>
-                <Text style={styles.groupLabel}>{dateLabel(group.date)}</Text>
-                <Text style={styles.groupTotal}>{formatINR(group.total)}</Text>
-              </View>
-              {group.items.map((transaction) => (
-                <View style={styles.row} key={transaction.id}>
-                  <TransactionRow
-                    transaction={transaction}
-                    onDelete={() => deleteTransaction.mutate(transaction.id)}
-                    size="md"
-                  />
+            <View style={styles.statBlock}>
+              <Text style={styles.statBlockLabel}>Net</Text>
+              <Text style={styles.statBlockValue}>{formatINR(shownNet)}</Text>
+            </View>
+          </View>
+        </View>
+
+        {transactions.isLoading ? (
+          <ActivityIndicator color={colors.accent} style={styles.loading} />
+        ) : groups.length === 0 ? (
+          <View style={[styles.listContent, styles.emptyState]}>
+            <Text style={styles.emptyStateTitle}>Nothing here yet</Text>
+            <Text style={styles.emptyStateSub}>Add a transaction or change the month.</Text>
+          </View>
+        ) : (
+          <View style={styles.listContent}>
+            {groups.map((group) => (
+              <View key={group.date}>
+                <View style={styles.groupHeader}>
+                  <Text style={styles.groupLabel}>{dateLabel(group.date)}</Text>
+                  <Text style={styles.groupTotal}>{formatINR(group.total)}</Text>
                 </View>
-              ))}
-            </View>
-          )}
-        />
-      )}
+                {group.items.map((transaction) => (
+                  <View style={styles.row} key={transaction.id}>
+                    <TransactionRow
+                      transaction={transaction}
+                      onDelete={() => deleteTransaction.mutate(transaction.id)}
+                      size="md"
+                    />
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+      </ScreenScaffold>
 
       <AddTransactionSheet visible={addOpen} month={month} onClose={() => setAddOpen(false)} />
-    </View>
+    </>
   );
 }
 
@@ -310,41 +292,6 @@ function AddTransactionSheet({ visible, month, onClose }: AddTransactionSheetPro
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    padding: spacing.xl,
-    gap: spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    flexWrap: 'wrap',
-  },
-  addButton: {
-    marginLeft: 'auto',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    height: 42,
-    paddingHorizontal: 18,
-    borderRadius: radius.chip,
-    backgroundColor: colors.textPrimary,
-    shadowColor: colors.textPrimary,
-    shadowOpacity: 0.35,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  addButtonPressed: {
-    backgroundColor: '#2C2822',
-  },
-  addButtonLabel: {
-    fontFamily: fontFamily.bold,
-    fontSize: 13,
-    color: colors.surface,
-  },
   toolRow: {
     flexDirection: 'row',
     alignItems: 'center',

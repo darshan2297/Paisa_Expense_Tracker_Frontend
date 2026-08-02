@@ -7,9 +7,11 @@ import { AppShell } from '@/components/layout/AppShell';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { colors } from '@/theme/colors';
 
+const HIDDEN_SCREENS = ['overview', 'bills', 'calendar', 'people', 'shared', 'cards'] as const;
+
 /**
  * Tab navigator — bottom tabs for 5 primary mobile routes; AppShell adds
- * desktop sidebar. Hidden module routes are registered in later branches.
+ * desktop sidebar. Daily module hidden routes registered in this branch.
  */
 export default function TabsLayout() {
   const { isDesktopWeb } = useResponsiveLayout();
@@ -67,6 +69,9 @@ export default function TabsLayout() {
               tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
             }}
           />
+          {HIDDEN_SCREENS.map((name) => (
+            <Tabs.Screen key={name} name={name} options={{ href: null }} />
+          ))}
         </Tabs>
       </SafeAreaView>
     </AppShell>
