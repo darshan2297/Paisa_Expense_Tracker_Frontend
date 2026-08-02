@@ -16,6 +16,9 @@ const HIDDEN_SCREENS = [
   'cards',
   'emergency',
   'policy',
+  'networth',
+  'assets',
+  'loans',
 ] as const;
 
 /**
