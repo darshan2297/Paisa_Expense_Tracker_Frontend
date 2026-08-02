@@ -1,11 +1,13 @@
+import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
 
 import { colors } from '@/theme/colors';
 
 /**
  * Bottom tab navigator. Only "Home" and "Profile" exist for now — more tabs
- * (Transactions, Budgets, ...) are added as their features land.
+ * (Transactions, Budgets, ...) are added as their features land. Icons are
+ * Feather (outline, stroke-based) to match the mockup's icon language —
+ * see docs/COMPONENT_GUIDE.md.
  */
 export default function TabsLayout() {
   return (
@@ -24,14 +26,14 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>⌂</Text>,
+          tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>☺</Text>,
+          tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
         }}
       />
     </Tabs>

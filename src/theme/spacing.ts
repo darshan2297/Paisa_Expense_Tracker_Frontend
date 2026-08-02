@@ -18,6 +18,12 @@ export const radius = {
   card: 20,
   /** Larger card corner radius (hero/feature cards). */
   cardLarge: 24,
+  /** Recessed nested sub-tile (inside a hero/card), e.g. forecast mini-stats. */
+  tileSmall: 14,
+  /** Icon chip / squircle avatar corner radius. */
+  chip: 13,
+  /** Text input corner radius. */
+  input: 13,
   /** Fully-rounded pill shape (buttons, chips, badges). */
   pill: 99,
 } as const;

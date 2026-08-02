@@ -1,19 +1,37 @@
+import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
+import { HeroCard } from '@/components/HeroCard';
+import { IconChip } from '@/components/IconChip';
 import { Input } from '@/components/Input';
 import { SettingRow } from '@/components/SettingRow';
 import { useLogout } from '@/features/auth/hooks';
 import { useProfile, useUpdateProfile } from '@/features/profile/hooks';
 import type { Profile, ProfileUpdatePayload } from '@/features/profile/types';
 import { colors } from '@/theme/colors';
-import { spacing } from '@/theme/spacing';
+import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
 
 type ProfileFormValues = Pick<Profile, 'name' | 'phone' | 'city' | 'occupation'>;
+
+function memberSinceText(createdAt: string): string {
+  const date = new Date(createdAt);
+  return `Member since ${date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`;
+}
+
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+  return initials || '?';
+}
 
 export default function ProfileScreen() {
   const profile = useProfile();
@@ -65,13 +83,32 @@ export default function ProfileScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.subtitle}>{profile.data.email}</Text>
-      </View>
+      <HeroCard style={styles.hero}>
+        <LinearGradient
+          colors={[colors.brandGradientStart, colors.brandGradientEnd]}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={styles.avatar}
+        >
+          <Text style={styles.avatarText}>{initialsFor(profile.data.name)}</Text>
+        </LinearGradient>
+        <View style={styles.heroTextGroup}>
+          <Text style={styles.heroName}>{profile.data.name}</Text>
+          <Text style={styles.heroEmail}>{profile.data.email}</Text>
+          <Text style={styles.heroSince}>{memberSinceText(profile.data.created_at)}</Text>
+        </View>
+        <Pressable
+          onPress={() => logout.mutate()}
+          style={({ pressed }) => [styles.heroLogout, pressed && styles.heroLogoutPressed]}
+        >
+          <Feather name="log-out" size={15} color={colors.heroText} />
+          <Text style={styles.heroLogoutText}>Log out</Text>
+        </Pressable>
+      </HeroCard>
 
-      <Card style={styles.section}>
+      <Card size="large" style={styles.section}>
         <Text style={styles.sectionTitle}>Your details</Text>
+        <Text style={styles.sectionSubtitle}>Edits save as you type.</Text>
 
         <Controller
           control={control}
@@ -128,42 +165,74 @@ export default function ProfileScreen() {
         <Button label="Save changes" onPress={onSave} loading={updateProfile.isPending} />
       </Card>
 
-      <Card style={styles.section}>
+      <Card size="large" style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
-        <SettingRow
-          label="Dark mode"
-          value={profile.data.dark_mode}
-          onValueChange={(value) => togglePreference('dark_mode', value)}
-        />
-        <SettingRow
-          label="Week starts Monday"
-          value={profile.data.week_start_monday}
-          onValueChange={(value) => togglePreference('week_start_monday', value)}
-        />
-        <SettingRow
-          label="Round-up savings"
-          sub="Round each expense up to the nearest ₹10 into savings"
-          value={profile.data.round_up_savings}
-          onValueChange={(value) => togglePreference('round_up_savings', value)}
-        />
-        <SettingRow
-          label="Digest notifications"
-          value={profile.data.digest_enabled}
-          onValueChange={(value) => togglePreference('digest_enabled', value)}
-        />
-        <SettingRow
-          label="Sound effects"
-          value={profile.data.sound_enabled}
-          onValueChange={(value) => togglePreference('sound_enabled', value)}
-        />
+        <View>
+          <SettingRow
+            label="Dark mode"
+            value={profile.data.dark_mode}
+            onValueChange={(value) => togglePreference('dark_mode', value)}
+          />
+          <SettingRow
+            label="Week starts Monday"
+            value={profile.data.week_start_monday}
+            onValueChange={(value) => togglePreference('week_start_monday', value)}
+          />
+          <SettingRow
+            label="Round-up savings"
+            sub="Round each expense up to the nearest ₹10 into savings"
+            value={profile.data.round_up_savings}
+            onValueChange={(value) => togglePreference('round_up_savings', value)}
+          />
+          <SettingRow
+            label="Digest notifications"
+            value={profile.data.digest_enabled}
+            onValueChange={(value) => togglePreference('digest_enabled', value)}
+          />
+          <SettingRow
+            label="Sound effects"
+            value={profile.data.sound_enabled}
+            onValueChange={(value) => togglePreference('sound_enabled', value)}
+            showDivider={false}
+          />
+        </View>
       </Card>
 
-      <Button
-        label="Log out"
-        variant="danger"
-        onPress={() => logout.mutate()}
-        loading={logout.isPending}
-      />
+      <View style={styles.quickLinks}>
+        {/* Security & privacy / Lock the app have no onPress yet - they
+            route to the Security feature (F20), which doesn't exist yet.
+            Rendered now for layout fidelity to the mockup; wired once built. */}
+        <View style={styles.quickLinkCard}>
+          <IconChip name="shield" background={colors.successTint} color={colors.success} />
+          <View style={styles.quickLinkText}>
+            <Text style={styles.quickLinkTitle}>Security &amp; privacy</Text>
+            <Text style={styles.quickLinkSub}>PIN, biometrics, backups</Text>
+          </View>
+        </View>
+        <View style={styles.quickLinkCard}>
+          <IconChip name="lock" background={colors.accentTint} color={colors.accent} />
+          <View style={styles.quickLinkText}>
+            <Text style={styles.quickLinkTitle}>Lock the app</Text>
+            <Text style={styles.quickLinkSub}>Require auth to come back</Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={() => logout.mutate()}
+          style={({ pressed }) => [
+            styles.quickLinkCard,
+            styles.quickLinkDanger,
+            pressed && styles.quickLinkDangerPressed,
+          ]}
+        >
+          <IconChip name="log-out" background={colors.dangerTint} color={colors.dangerValue} />
+          <View style={styles.quickLinkText}>
+            <Text style={[styles.quickLinkTitle, { color: colors.dangerValue }]}>Log out</Text>
+            <Text style={[styles.quickLinkSub, { color: colors.dangerSubtext }]}>
+              End this session on all tabs
+            </Text>
+          </View>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -181,27 +250,111 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.xl,
-    gap: spacing.xl,
+    gap: 14,
   },
-  header: {
-    gap: spacing.xs,
+  hero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+    flexWrap: 'wrap',
   },
-  title: {
+  avatar: {
+    width: 76,
+    height: 76,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
     fontFamily: fontFamily.extrabold,
-    fontSize: fontSize.display,
-    color: colors.textPrimary,
+    fontSize: 26,
+    color: colors.heroText,
   },
-  subtitle: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.base,
-    color: colors.textMuted,
+  heroTextGroup: {
+    gap: 4,
+    minWidth: 0,
+  },
+  heroName: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: fontSize.xxl,
+    color: colors.heroText,
+  },
+  heroEmail: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    color: colors.heroTextMuted,
+  },
+  heroSince: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    color: colors.heroTextFaint,
+  },
+  heroLogout: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    height: 42,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.chip,
+    borderWidth: 1,
+    borderColor: colors.heroBorderSubtle,
+    backgroundColor: colors.heroFillSubtle,
+  },
+  heroLogoutPressed: {
+    backgroundColor: 'rgba(252,250,247,.16)',
+  },
+  heroLogoutText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    color: colors.heroText,
   },
   section: {
     gap: spacing.lg,
   },
   sectionTitle: {
-    fontFamily: fontFamily.semibold,
-    fontSize: fontSize.lg,
+    fontFamily: fontFamily.extrabold,
+    fontSize: 15,
     color: colors.textPrimary,
+  },
+  sectionSubtitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    color: colors.textCaption,
+    marginTop: -spacing.md,
+  },
+  quickLinks: {
+    gap: spacing.md,
+  },
+  quickLinkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    padding: 20,
+    borderRadius: radius.card,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickLinkDanger: {
+    backgroundColor: colors.dangerTint,
+    borderColor: colors.dangerTintBorder,
+  },
+  quickLinkDangerPressed: {
+    backgroundColor: '#F6E2DA',
+  },
+  quickLinkText: {
+    gap: 2,
+    minWidth: 0,
+  },
+  quickLinkTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13.5,
+    color: colors.textPrimary,
+  },
+  quickLinkSub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 11.5,
+    color: colors.textCaption,
   },
 });
