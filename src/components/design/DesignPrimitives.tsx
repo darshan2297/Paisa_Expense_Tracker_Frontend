@@ -228,13 +228,14 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
-    flexWrap: 'wrap',
   },
   sectionCopy: {
     flex: 1,
     minWidth: 0,
-    gap: 3,
+    gap: 4,
+    justifyContent: 'center',
   },
   sectionTitle: {
     fontFamily: fontFamily.extrabold,
@@ -245,10 +246,12 @@ const styles = StyleSheet.create({
   sectionSub: {
     fontFamily: fontFamily.medium,
     fontSize: 12.5,
+    lineHeight: 18,
     color: colors.textCaption,
   },
   sectionAction: {
-    marginLeft: 'auto',
+    flexShrink: 0,
+    alignSelf: 'center',
     height: 38,
     paddingHorizontal: 15,
     borderRadius: 12,
