@@ -1,42 +1,137 @@
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
+import { Card } from '@/components/Card';
+import { DateField } from '@/components/DateField';
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
-import { Card } from '@/components/Card';
+import { useCategories } from '@/features/categories/hooks';
+import { useConfirmScan, useScanReceipt } from '@/features/scanner/hooks';
+import type { ScanLineItem } from '@/features/scanner/types';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
+import { fileToFormData, pickFile } from '@/utils/filePicker';
 
-const SCAN_FIELDS = [
-  { key: 'merchant', label: 'Merchant', value: 'Reliance Smart Bazaar' },
-  { key: 'date', label: 'Date', value: '2026-08-02' },
-  { key: 'amount', label: 'Amount', value: '2,486' },
-  { key: 'gst', label: 'GST (18%)', value: '379' },
-  { key: 'method', label: 'Payment method', value: 'HDFC Millennia ••4821' },
-  { key: 'note', label: 'Notes', value: 'Monthly groceries' },
+const FIELD_DEFS = [
+  { key: 'merchant' as const, label: 'Merchant', placeholder: 'e.g. Cafe Coffee Day' },
+  { key: 'date' as const, label: 'Date', placeholder: 'YYYY-MM-DD' },
+  { key: 'amount' as const, label: 'Amount', placeholder: '0' },
+  { key: 'gst' as const, label: 'GST (18%)', placeholder: '0' },
+  { key: 'method' as const, label: 'Payment method', placeholder: 'e.g. UPI / Card' },
+  { key: 'note' as const, label: 'Notes', placeholder: 'Optional' },
 ];
 
-const CATEGORIES = ['Groceries', 'Food & Dining', 'Shopping', 'Transport', 'Utilities', 'Other'];
+type ScanFields = {
+  merchant: string;
+  date: string;
+  amount: string;
+  gst: string;
+  method: string;
+  note: string;
+};
 
-const RECEIPT_LINES = [
-  { left: 'Atta 10kg', right: '540.00' },
-  { left: 'Cooking oil 5L', right: '820.00' },
-  { left: 'Detergent pack', right: '399.00' },
-  { left: 'Fresh produce', right: '348.00' },
-  { left: 'Dairy & eggs', right: '379.00' },
-];
+function emptyFields(): ScanFields {
+  return {
+    merchant: '',
+    date: new Date().toISOString().slice(0, 10),
+    amount: '',
+    gst: '',
+    method: '',
+    note: '',
+  };
+}
+
+function parseAmount(value: string): number {
+  const cleaned = value.replace(/[,₹\s]/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
 
 /** Design HTML `isScanner` — receipt OCR preview and confirm. */
 export default function ScannerScreen() {
   const [month, setMonth] = useState(currentYearMonth());
   const [loaded, setLoaded] = useState(false);
-  const [fields, setFields] = useState(SCAN_FIELDS);
+  const [fields, setFields] = useState<ScanFields>(emptyFields);
+  const [lineItems, setLineItems] = useState<ScanLineItem[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
-  const updateField = (key: string, value: string) => {
-    setFields((prev) => prev.map((f) => (f.key === key ? { ...f, value } : f)));
+  const categories = useCategories();
+  const scanReceipt = useScanReceipt();
+  const confirmScan = useConfirmScan();
+
+  const expenseCategories = (categories.data ?? []).filter((c) => c.kind === 'expense');
+  const confirmAmount = formatINR(parseAmount(fields.amount));
+
+  const updateField = (key: keyof ScanFields, value: string) => {
+    setFields((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const resetScan = () => {
+    setLoaded(false);
+    setLineItems([]);
+    setSelectedCategoryId(null);
+    setScanError(null);
+    setFields(emptyFields());
+  };
+
+  const handleScan = async () => {
+    setScanError(null);
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not supported', 'Receipt upload is available on web only for now.');
+      return;
+    }
+
+    const file = await pickFile('.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf');
+    if (!file) return;
+
+    try {
+      const result = await scanReceipt.mutateAsync(fileToFormData(file));
+      setFields({
+        merchant: result.merchant,
+        date: result.date,
+        amount: String(result.amount).replace(/,/g, ''),
+        gst: result.gst ?? '',
+        method: result.payment_method ?? '',
+        note: result.note ?? '',
+      });
+      setLineItems(result.line_items);
+      setSelectedCategoryId(result.suggested_category_id);
+      setLoaded(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not scan this receipt.';
+      setScanError(message);
+      Alert.alert('Scan failed', message);
+    }
+  };
+
+  const handleConfirm = () => {
+    const categoryId = selectedCategoryId ?? expenseCategories[0]?.id;
+    if (!categoryId || parseAmount(fields.amount) <= 0) return;
+
+    confirmScan.mutate(
+      {
+        merchant: fields.merchant.trim(),
+        date: fields.date.trim(),
+        amount: String(parseAmount(fields.amount)),
+        category_id: categoryId,
+        note: fields.note.trim() || null,
+      },
+      { onSuccess: resetScan },
+    );
   };
 
   return (
@@ -48,52 +143,61 @@ export default function ScannerScreen() {
             <>
               <View style={styles.receipt}>
                 <View style={styles.receiptHeader}>
-                  <Text style={styles.receiptStore}>RELIANCE SMART BAZAAR</Text>
-                  <Text style={styles.receiptMeta}>Prahlad Nagar · Ahmedabad 380015</Text>
-                  <Text style={styles.receiptMeta}>GSTIN 24AABCR1234M1Z5</Text>
+                  <Text style={styles.receiptStore}>{fields.merchant.toUpperCase()}</Text>
+                  <Text style={styles.receiptMeta}>Scanned receipt preview</Text>
                 </View>
                 <View style={styles.receiptItems}>
-                  {RECEIPT_LINES.map((line) => (
-                    <View key={line.left} style={styles.receiptLine}>
+                  {(lineItems.length > 0
+                    ? lineItems
+                    : [{ left: fields.note || 'Receipt total', right: fields.amount }]
+                  ).map((line) => (
+                    <View key={`${line.left}-${line.right}`} style={styles.receiptLine}>
                       <Text style={styles.receiptItem}>{line.left}</Text>
                       <Text style={styles.receiptItem}>{line.right}</Text>
                     </View>
                   ))}
                 </View>
                 <View style={styles.receiptTotals}>
-                  <View style={styles.receiptLine}>
-                    <Text style={styles.receiptMuted}>Subtotal</Text>
-                    <Text style={styles.receiptMuted}>2,107.00</Text>
-                  </View>
-                  <View style={styles.receiptLine}>
-                    <Text style={styles.receiptMuted}>CGST 9%</Text>
-                    <Text style={styles.receiptMuted}>189.50</Text>
-                  </View>
-                  <View style={styles.receiptLine}>
-                    <Text style={styles.receiptMuted}>SGST 9%</Text>
-                    <Text style={styles.receiptMuted}>189.50</Text>
-                  </View>
+                  {fields.gst ? (
+                    <View style={styles.receiptLine}>
+                      <Text style={styles.receiptMuted}>GST</Text>
+                      <Text style={styles.receiptMuted}>{fields.gst}</Text>
+                    </View>
+                  ) : null}
                   <View style={[styles.receiptLine, styles.receiptTotalRow]}>
                     <Text style={styles.receiptTotalLabel}>TOTAL</Text>
-                    <Text style={styles.receiptTotalLabel}>2,486.00</Text>
+                    <Text style={styles.receiptTotalLabel}>{confirmAmount}</Text>
                   </View>
                 </View>
-                <Text style={styles.receiptFooter}>HDFC Millennia ••4821 · Approved</Text>
+                {fields.method ? (
+                  <Text style={styles.receiptFooter}>{fields.method} · Approved</Text>
+                ) : null}
               </View>
-              <Pressable onPress={() => setLoaded(false)} style={styles.secondaryBtn}>
+              <Pressable onPress={handleScan} style={styles.secondaryBtn}>
                 <Text style={styles.secondaryBtnText}>Upload a different file</Text>
               </Pressable>
             </>
           ) : (
-            <Pressable onPress={() => setLoaded(true)} style={styles.dropZone}>
-              <View style={styles.dropIcon}>
-                <Feather name="upload" size={26} color={colors.accent} />
-              </View>
-              <Text style={styles.dropTitle}>Drop a receipt here</Text>
-              <Text style={styles.dropSub}>JPG, PNG or PDF · up to 10 MB</Text>
-              <View style={styles.browseBtn}>
-                <Text style={styles.browseText}>Browse files</Text>
-              </View>
+            <Pressable
+              onPress={handleScan}
+              disabled={scanReceipt.isPending}
+              style={styles.dropZone}
+            >
+              {scanReceipt.isPending ? (
+                <ActivityIndicator color={colors.accent} />
+              ) : (
+                <>
+                  <View style={styles.dropIcon}>
+                    <Feather name="upload" size={26} color={colors.accent} />
+                  </View>
+                  <Text style={styles.dropTitle}>Drop a receipt here</Text>
+                  <Text style={styles.dropSub}>JPG, PNG or PDF · up to 10 MB</Text>
+                  <View style={styles.browseBtn}>
+                    <Text style={styles.browseText}>Browse files</Text>
+                  </View>
+                  {scanError ? <Text style={styles.errorText}>{scanError}</Text> : null}
+                </>
+              )}
             </Pressable>
           )}
         </Card>
@@ -103,39 +207,66 @@ export default function ScannerScreen() {
             title="Extracted details"
             subtitle="Check each field before saving — you can edit anything."
           />
-          {fields.map((f) => (
+          {FIELD_DEFS.map((f) => (
             <View key={f.key} style={styles.field}>
               <Text style={styles.fieldLabel}>{f.label}</Text>
-              <TextInput
-                value={f.value}
-                onChangeText={(v) => updateField(f.key, v)}
-                style={styles.fieldInput}
-              />
+              {f.key === 'date' ? (
+                <DateField value={fields.date} onChange={(v) => updateField('date', v)} />
+              ) : (
+                <TextInput
+                  value={fields[f.key]}
+                  onChangeText={(v) => updateField(f.key, v)}
+                  placeholder={f.placeholder}
+                  placeholderTextColor={colors.textCaption}
+                  style={styles.fieldInput}
+                  {...(f.key === 'amount' || f.key === 'gst'
+                    ? { keyboardType: 'decimal-pad' as const, inputMode: 'decimal' as const }
+                    : null)}
+                />
+              )}
             </View>
           ))}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Category</Text>
             <View style={styles.catRow}>
-              {CATEGORIES.map((c) => (
-                <View key={c} style={styles.catChip}>
-                  <Text style={styles.catChipText}>{c}</Text>
-                </View>
-              ))}
+              {expenseCategories.map((c) => {
+                const selected = c.id === selectedCategoryId;
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => setSelectedCategoryId(c.id)}
+                    style={[styles.catChip, selected && styles.catChipSelected]}
+                  >
+                    <Text style={[styles.catChipText, selected && styles.catChipTextSelected]}>
+                      {c.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
           <View style={styles.confirmBanner}>
             <Text style={styles.confirmCopy}>This will be added as an expense of</Text>
-            <Text style={[styles.confirmAmount, moneyTextStyle]}>₹2,486</Text>
+            <Text style={[styles.confirmAmount, moneyTextStyle]}>{confirmAmount}</Text>
           </View>
           <View style={styles.actions}>
             <Pressable
-              onPress={() => setLoaded(false)}
+              onPress={resetScan}
+              disabled={confirmScan.isPending}
               style={[styles.actionBtn, styles.discardBtn]}
             >
               <Text style={styles.discardText}>Discard</Text>
             </Pressable>
-            <Pressable style={[styles.actionBtn, styles.saveBtn]}>
-              <Text style={styles.saveText}>Confirm & add transaction</Text>
+            <Pressable
+              onPress={handleConfirm}
+              disabled={confirmScan.isPending || !selectedCategoryId || !loaded}
+              style={[styles.actionBtn, styles.saveBtn]}
+            >
+              {confirmScan.isPending ? (
+                <ActivityIndicator color={colors.heroText} />
+              ) : (
+                <Text style={styles.saveText}>Confirm & add transaction</Text>
+              )}
             </Pressable>
           </View>
         </Card>
@@ -181,6 +312,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   browseText: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.heroText },
+  errorText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    color: colors.dangerValue,
+    textAlign: 'center',
+    marginTop: 4,
+  },
   receipt: {
     borderRadius: 18,
     borderWidth: 1,
@@ -264,7 +402,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSubtle,
     justifyContent: 'center',
   },
+  catChipSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentTint,
+  },
   catChipText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.textMuted },
+  catChipTextSelected: { color: colors.accent },
   confirmBanner: {
     flexDirection: 'row',
     alignItems: 'center',

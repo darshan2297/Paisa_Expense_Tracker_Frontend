@@ -61,10 +61,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Plan',
     items: [
-      { id: 'planned', label: 'Budget & Fixed', icon: 'target', href: R('planned'), badge: 1 },
+      { id: 'planned', label: 'Budget & Fixed', icon: 'target', href: R('planned') },
       { id: 'wealth', label: 'Savings & Invest', icon: 'bar-chart-2', href: R('wealth') },
       { id: 'emergency', label: 'Emergency Fund', icon: 'shield', href: R('emergency') },
-      { id: 'policy', label: 'Policies', icon: 'shield', href: R('policy'), badge: 2 },
+      { id: 'policy', label: 'Policies', icon: 'shield', href: R('policy') },
     ],
   },
   {

@@ -1,18 +1,43 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { DesignKpiCard, DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { INVEST_KINDS } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalChips,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalSave,
+  ModalTextField,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import { getApiErrorMessage } from '@/utils/errors';
+import {
+  useContributeToGoal,
+  useCreateGoal,
+  useDeleteGoal,
+  useGoals,
+} from '@/features/goals/hooks';
+import {
+  useCreateInvestment,
+  useDeleteInvestment,
+  useInvestments,
+  useInvestmentsSummary,
+} from '@/features/investments/hooks';
 import { compact, fmt, initials, pctWidth } from '@/mock/format';
-import { MOCK_GOALS, MOCK_INVESTMENTS } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth } from '@/utils/date';
+import { safeNumber } from '@/utils/numbers';
 
 const AVATARS: [string, string][] = [
   ['#EDE9FE', '#5B54D6'],
@@ -23,49 +48,129 @@ const AVATARS: [string, string][] = [
   ['#FAE5F0', '#A84A7C'],
 ];
 
+const INV_COLORS: Record<string, [string, string]> = {
+  SIP: ['#EDE9FE', '#5B54D6'],
+  STK: ['#E5EEF8', '#3E6E9E'],
+  PPF: ['#E2F0E9', '#2F7D5D'],
+  FD: ['#FAEED8', '#96702C'],
+  GOLD: ['#FBE9D2', '#A2701F'],
+  NPS: ['#E7F0EF', '#2F7D6E'],
+};
+
 const INV_LABELS: Record<string, string> = {
   SIP: 'Mutual fund SIP',
   STK: 'Stocks',
   PPF: 'PPF / EPF',
   FD: 'Fixed deposit',
   GOLD: 'Gold',
+  NPS: 'NPS',
+};
+
+const INV_TAGS: Record<string, string> = {
+  SIP: 'SIP',
+  STK: 'STK',
+  PPF: 'PPF',
+  FD: 'FD',
+  GOLD: 'GOLD',
+  NPS: 'NPS',
 };
 
 /** Design HTML `isWealth` — portfolio hero, goals grid, investments list. */
 export default function WealthScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const today = '2026-08-02';
+  const [goalSheetOpen, setGoalSheetOpen] = useState(false);
+  const [investSheetOpen, setInvestSheetOpen] = useState(false);
+  const [contributeGoalId, setContributeGoalId] = useState<string | null>(null);
+  const [goalName, setGoalName] = useState('');
+  const [goalTarget, setGoalTarget] = useState('');
+  const [goalSaved, setGoalSaved] = useState('0');
+  const [goalError, setGoalError] = useState('');
+  const [investName, setInvestName] = useState('');
+  const [investKind, setInvestKind] = useState('SIP');
+  const [investAmount, setInvestAmount] = useState('');
+  const [investCurrent, setInvestCurrent] = useState('');
+  const [investError, setInvestError] = useState('');
+  const [contributeAmount, setContributeAmount] = useState('');
+  const [contributeDate, setContributeDate] = useState(new Date().toISOString().slice(0, 10));
+  const [contributeNote, setContributeNote] = useState('');
+  const [contributeError, setContributeError] = useState('');
+
+  const { data: goalsData } = useGoals();
+  const { data: investmentsData } = useInvestments();
+  const { data: investmentsSummary } = useInvestmentsSummary();
+  const createGoal = useCreateGoal();
+  const deleteGoal = useDeleteGoal();
+  const createInvestment = useCreateInvestment();
+  const deleteInvestment = useDeleteInvestment();
+  const contributeToGoal = useContributeToGoal();
+
+  function confirmDeleteGoal(goalId: string) {
+    Alert.alert('Delete this goal?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteGoal.mutate(goalId) },
+    ]);
+  }
+
+  function confirmDeleteInvestment(investmentId: string) {
+    Alert.alert('Delete this investment?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteInvestment.mutate(investmentId),
+      },
+    ]);
+  }
+
+  const goalsList = goalsData ?? [];
+  const investmentsList = investmentsData ?? [];
+  const today = new Date().toISOString().slice(0, 10);
 
   const stats = useMemo(() => {
-    const portfolio = MOCK_INVESTMENTS.reduce((a, v) => a + v.current, 0);
-    const invested = MOCK_INVESTMENTS.reduce((a, v) => a + v.invested, 0);
-    const gain = portfolio - invested;
-    const gainPct = invested ? ((gain / invested) * 100).toFixed(1) : '0.0';
-    const goalsSaved = MOCK_GOALS.reduce((a, g) => a + g.saved, 0);
-    const goalsToGo = MOCK_GOALS.reduce((a, g) => a + Math.max(0, g.target - g.saved), 0);
-    const sipTotal = MOCK_INVESTMENTS.reduce((a, v) => a + (v.monthly || 0), 0);
+    const portfolio = investmentsSummary
+      ? safeNumber(investmentsSummary.portfolio_total)
+      : investmentsList.reduce((a, v) => a + safeNumber(v.current_value), 0);
+    const invested = investmentsSummary
+      ? safeNumber(investmentsSummary.total_invested)
+      : investmentsList.reduce((a, v) => a + safeNumber(v.invested_amount), 0);
+    const gain = investmentsSummary
+      ? safeNumber(investmentsSummary.total_gain)
+      : portfolio - invested;
+    const gainPct = investmentsSummary
+      ? String(investmentsSummary.gain_pct ?? 0)
+      : invested
+        ? ((gain / invested) * 100).toFixed(1)
+        : '0.0';
+    const goalsSaved = goalsList.reduce((a, g) => a + safeNumber(g.saved_amount), 0);
+    const goalsToGo = goalsList.reduce((a, g) => a + safeNumber(g.remaining), 0);
+    const sipTotal = investmentsSummary
+      ? safeNumber(investmentsSummary.monthly_sip_total)
+      : investmentsList.reduce((a, v) => a + safeNumber(v.monthly_sip), 0);
     return { portfolio, invested, gain, gainPct, goalsSaved, goalsToGo, sipTotal };
-  }, []);
+  }, [goalsList, investmentsList, investmentsSummary]);
 
   const goals = useMemo(
     () =>
-      MOCK_GOALS.map((g, i) => {
+      goalsList.map((g, i) => {
         const [bg, fg] = AVATARS[i % AVATARS.length];
-        const pctv = g.target ? Math.min(100, (g.saved / g.target) * 100) : 0;
-        const rem = Math.max(0, g.target - g.saved);
-        const mo = g.monthly || 0;
+        const target = safeNumber(g.target_amount);
+        const saved = safeNumber(g.saved_amount);
+        const pctv = g.pct_complete ?? (target ? Math.min(100, (saved / target) * 100) : 0);
+        const rem = safeNumber(g.remaining) || Math.max(0, target - saved);
+        const mo = safeNumber(g.monthly_contribution);
         const monthsLeft = mo ? Math.ceil(rem / mo) : null;
         const eta = new Date(`${today}T00:00:00`);
         if (monthsLeft !== null) eta.setMonth(eta.getMonth() + monthsLeft);
         return {
-          ...g,
+          id: g.id,
+          name: g.name,
           bg,
           fg,
           initial: initials(g.name).slice(0, 1),
           pct: `${Math.round(pctv)}%`,
           width: pctWidth(pctv, 100),
-          saved: compact(g.saved),
-          target: compact(g.target),
+          saved: compact(saved),
+          target: compact(target),
           remaining: compact(rem),
           monthly: mo ? `${fmt(mo)}/mo` : 'not funded',
           eta:
@@ -83,160 +188,376 @@ export default function WealthScreen() {
           })),
         };
       }),
-    [],
+    [goalsList, today],
   );
 
   const investments = useMemo(
     () =>
-      MOCK_INVESTMENTS.map((v) => {
-        const g = v.current - v.invested;
-        const p = v.invested ? ((g / v.invested) * 100).toFixed(1) : '0.0';
+      investmentsList.map((v) => {
+        const invested = safeNumber(v.invested_amount);
+        const current = safeNumber(v.current_value);
+        const g = safeNumber(v.gain, current - invested);
+        const p = v.gain_pct?.toFixed(1) ?? (invested ? ((g / invested) * 100).toFixed(1) : '0.0');
+        const monthly = safeNumber(v.monthly_sip);
         const label = INV_LABELS[v.kind] ?? v.kind;
+        const [bg, fg] = INV_COLORS[v.kind] ?? AVATARS[0];
         return {
-          ...v,
-          sub: `${label} · invested ${compact(v.invested)}${v.monthly ? ` · ${fmt(v.monthly)}/mo` : ''}`,
-          current: compact(v.current),
+          id: v.id,
+          name: v.name,
+          kind: v.kind,
+          tag: INV_TAGS[v.kind] ?? v.kind,
+          bg,
+          fg,
+          sub: `${label} · invested ${compact(invested)}${monthly ? ` · ${fmt(monthly)}/mo` : ''}`,
+          current: compact(current),
           gain: `${g >= 0 ? '+' : '−'}${compact(Math.abs(g))} (${g >= 0 ? '+' : ''}${p}%)`,
           gainColor: g >= 0 ? colors.successValue : colors.dangerValue,
         };
       }),
-    [],
+    [investmentsList],
   );
 
   const gainPositive = stats.gain >= 0;
 
+  function closeGoal() {
+    setGoalSheetOpen(false);
+    setGoalName('');
+    setGoalTarget('');
+    setGoalSaved('0');
+    setGoalError('');
+  }
+
+  function closeInvest() {
+    setInvestSheetOpen(false);
+    setInvestName('');
+    setInvestKind('SIP');
+    setInvestAmount('');
+    setInvestCurrent('');
+    setInvestError('');
+  }
+
+  function closeContribute() {
+    setContributeGoalId(null);
+    setContributeAmount('');
+    setContributeDate(new Date().toISOString().slice(0, 10));
+    setContributeNote('');
+    setContributeError('');
+  }
+
+  function handleCreateGoal() {
+    const target = safeNumber(goalTarget);
+    if (target <= 0) {
+      setGoalError('Enter a target amount greater than zero.');
+      return;
+    }
+    if (!goalName.trim()) {
+      setGoalError('Give this goal a name.');
+      return;
+    }
+    createGoal.mutate(
+      {
+        name: goalName.trim(),
+        target_amount: String(target),
+        monthly_contribution: '0',
+        saved_amount: String(Math.max(0, safeNumber(goalSaved))),
+      },
+      {
+        onSuccess: closeGoal,
+        onError: (error) =>
+          setGoalError(getApiErrorMessage(error, 'Could not create that goal. Try again.')),
+      },
+    );
+  }
+
+  function handleCreateInvestment() {
+    const amount = safeNumber(investAmount);
+    if (amount <= 0) {
+      setInvestError('Enter the amount invested.');
+      return;
+    }
+    if (!investName.trim()) {
+      setInvestError('Give this investment a name.');
+      return;
+    }
+    const current = safeNumber(investCurrent) || amount;
+    createInvestment.mutate(
+      {
+        name: investName.trim(),
+        kind: investKind,
+        invested_amount: String(amount),
+        current_value: String(current),
+        monthly_sip: '0',
+      },
+      {
+        onSuccess: closeInvest,
+        onError: (error) =>
+          setInvestError(getApiErrorMessage(error, 'Could not save that investment. Try again.')),
+      },
+    );
+  }
+
+  function handleContribute() {
+    if (!contributeGoalId) return;
+    const amount = safeNumber(contributeAmount);
+    if (amount <= 0) {
+      setContributeError('Enter an amount greater than zero.');
+      return;
+    }
+    contributeToGoal.mutate(
+      {
+        goalId: contributeGoalId,
+        payload: { amount: String(amount) },
+      },
+      {
+        onSuccess: closeContribute,
+        onError: (error) =>
+          setContributeError(getApiErrorMessage(error, 'Could not add that money. Try again.')),
+      },
+    );
+  }
+
   return (
-    <ScreenScaffold month={month} onMonthChange={setMonth}>
-      <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
-        <LinearGradient
-          colors={['#123F35', '#0B2A24']}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={styles.portfolioHero}
-        >
-          <Text style={styles.portfolioEyebrow}>Portfolio value</Text>
-          <Text style={[styles.portfolioValue, moneyTextStyle]}>{compact(stats.portfolio)}</Text>
-          <Text style={[styles.portfolioGain, { color: gainPositive ? '#8FE0BE' : '#F3A48E' }]}>
-            {gainPositive ? '▲ +' : '▼ −'}
-            {compact(Math.abs(stats.gain))} ({gainPositive ? '+' : '−'}
-            {Math.abs(Number(stats.gainPct))}%)
-          </Text>
-        </LinearGradient>
+    <>
+      <ScreenScaffold month={month} onMonthChange={setMonth}>
+        <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
+          <LinearGradient
+            colors={['#123F35', '#0B2A24']}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.85, y: 1 }}
+            style={styles.portfolioHero}
+          >
+            <Text style={styles.portfolioEyebrow}>Portfolio value</Text>
+            <Text style={[styles.portfolioValue, moneyTextStyle]}>{compact(stats.portfolio)}</Text>
+            <Text style={[styles.portfolioGain, { color: gainPositive ? '#8FE0BE' : '#F3A48E' }]}>
+              {gainPositive ? '▲ +' : '▼ −'}
+              {compact(Math.abs(stats.gain))} ({gainPositive ? '+' : '−'}
+              {Math.abs(Number(stats.gainPct))}%)
+            </Text>
+          </LinearGradient>
 
-        <DesignKpiCard
-          label="Saved in goals"
-          value={compact(stats.goalsSaved)}
-          sub={`${MOCK_GOALS.length} goals · ${compact(stats.goalsToGo)} to go`}
-        />
-        <DesignKpiCard
-          label="Monthly SIP"
-          value={fmt(stats.sipTotal)}
-          sub="auto-invested every month"
-          valueColor="#2F7D6E"
-        />
-      </DesignGrid>
+          <DesignKpiCard
+            label="Saved in goals"
+            value={compact(stats.goalsSaved)}
+            sub={`${goalsList.length} goals · ${compact(stats.goalsToGo)} to go`}
+          />
+          <DesignKpiCard
+            label="Monthly SIP"
+            value={fmt(stats.sipTotal)}
+            sub="auto-invested every month"
+            valueColor="#2F7D6E"
+          />
+        </DesignGrid>
 
-      <Card size="large" style={styles.goalsCard}>
-        <DesignSectionHeader
-          title="Savings goals"
-          subtitle="Put money aside with a purpose."
-          actionLabel="New goal"
-          onAction={() => {}}
-        />
-        <DesignGrid cols={2} tabletCols={1} narrowCols={1} style={styles.goalsGrid}>
-          {goals.map((g) => (
-            <View key={g.id} style={styles.goalTile}>
-              <View style={styles.goalTop}>
-                <View style={[styles.goalAvatar, { backgroundColor: g.bg }]}>
-                  <Text style={[styles.goalInitial, { color: g.fg }]}>{g.initial}</Text>
-                </View>
-                <View style={styles.goalCopy}>
-                  <Text style={styles.goalName} numberOfLines={1}>
-                    {g.name}
-                  </Text>
-                  <Text style={styles.goalSub}>{g.sub}</Text>
-                </View>
-                <Text style={[styles.goalPct, { color: g.fg }]}>{g.pct}</Text>
-              </View>
-              <View style={styles.barTrack}>
-                <View
-                  style={[
-                    styles.barFill,
-                    { width: g.width as `${number}%`, backgroundColor: g.fg },
-                  ]}
-                />
-              </View>
-              <View style={styles.milestoneRow}>
-                {g.milestones.map((ms) => (
-                  <View key={ms.label} style={[styles.milestone, { backgroundColor: ms.bg }]}>
-                    <Text style={[styles.milestoneLabel, { color: ms.fg }]}>{ms.label}</Text>
+        <Card size="large" style={styles.goalsCard}>
+          <DesignSectionHeader
+            title="Savings goals"
+            subtitle="Put money aside with a purpose."
+            actionLabel="New goal"
+            onAction={() => setGoalSheetOpen(true)}
+          />
+          {goals.length === 0 ? (
+            <View style={styles.emptyGoals}>
+              <Text style={styles.emptyTitle}>No savings goals yet</Text>
+              <Text style={styles.emptyHint}>Emergency fund, a trip, a new phone — start one.</Text>
+            </View>
+          ) : null}
+          <DesignGrid cols={2} tabletCols={1} narrowCols={1} style={styles.goalsGrid}>
+            {goals.map((g) => (
+              <View key={g.id} style={styles.goalTile}>
+                <View style={styles.goalTop}>
+                  <View style={[styles.goalAvatar, { backgroundColor: g.bg }]}>
+                    <Text style={[styles.goalInitial, { color: g.fg }]}>{g.initial}</Text>
                   </View>
-                ))}
-              </View>
-              <View style={styles.goalMetaRow}>
-                <View style={styles.goalMeta}>
-                  <Text style={styles.goalMetaLabel}>Contributing</Text>
-                  <Text style={styles.goalMetaValue}>{g.monthly}</Text>
+                  <View style={styles.goalCopy}>
+                    <Text style={styles.goalName} numberOfLines={1}>
+                      {g.name}
+                    </Text>
+                    <Text style={styles.goalSub}>{g.sub}</Text>
+                  </View>
+                  <Text style={[styles.goalPct, { color: g.fg }]}>{g.pct}</Text>
                 </View>
-                <View style={styles.goalMeta}>
-                  <Text style={styles.goalMetaLabel}>Done by</Text>
-                  <Text style={styles.goalMetaValue}>{g.eta}</Text>
+                <View style={styles.barTrack}>
+                  <View
+                    style={[
+                      styles.barFill,
+                      { width: g.width as `${number}%`, backgroundColor: g.fg },
+                    ]}
+                  />
+                </View>
+                <View style={styles.milestoneRow}>
+                  {g.milestones.map((ms) => (
+                    <View key={ms.label} style={[styles.milestone, { backgroundColor: ms.bg }]}>
+                      <Text style={[styles.milestoneLabel, { color: ms.fg }]}>{ms.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.goalMetaRow}>
+                  <View style={styles.goalMeta}>
+                    <Text style={styles.goalMetaLabel}>Contributing</Text>
+                    <Text style={styles.goalMetaValue}>{g.monthly}</Text>
+                  </View>
+                  <View style={styles.goalMeta}>
+                    <Text style={styles.goalMetaLabel}>Done by</Text>
+                    <Text style={styles.goalMetaValue}>{g.eta}</Text>
+                  </View>
+                </View>
+                <View style={styles.goalFooter}>
+                  <Text style={styles.goalSaved}>{g.saved}</Text>
+                  <Text style={styles.goalOf}>
+                    of {g.target} · {g.months}
+                  </Text>
+                  <Pressable style={styles.addMoneyBtn} onPress={() => setContributeGoalId(g.id)}>
+                    <Text style={styles.addMoneyLabel}>Add money</Text>
+                  </Pressable>
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.goalRemoveBtn}
+                    onPress={() => confirmDeleteGoal(g.id)}
+                    accessibilityLabel="Remove goal"
+                  >
+                    <Text style={styles.goalRemoveLabel}>×</Text>
+                  </Pressable>
                 </View>
               </View>
-              <View style={styles.goalFooter}>
-                <Text style={styles.goalSaved}>{g.saved}</Text>
-                <Text style={styles.goalOf}>
-                  of {g.target} · {g.months}
-                </Text>
-                <Pressable style={styles.addMoneyBtn}>
-                  <Text style={styles.addMoneyLabel}>Add money</Text>
+            ))}
+          </DesignGrid>
+        </Card>
+
+        <Card size="large" style={styles.investCard}>
+          <View style={styles.investHeader}>
+            <DesignSectionHeader
+              title="Investments"
+              subtitle="SIPs, stocks, PPF, FDs and gold in one place."
+              actionLabel="Add investment"
+              onAction={() => setInvestSheetOpen(true)}
+            />
+          </View>
+          <View style={styles.investBanner}>
+            <Text style={styles.investBannerLeft}>Invested {compact(stats.invested)}</Text>
+            <Text
+              style={[
+                styles.investBannerRight,
+                { color: gainPositive ? colors.successValue : colors.dangerValue },
+              ]}
+            >
+              {gainPositive ? '+' : '−'}
+              {compact(Math.abs(stats.gain))} ({gainPositive ? '+' : '−'}
+              {Math.abs(Number(stats.gainPct))}%)
+            </Text>
+          </View>
+          {investments.length === 0 ? (
+            <View style={styles.emptyInvest}>
+              <Text style={styles.emptyTitle}>No investments tracked</Text>
+              <Text style={styles.emptyHint}>Add a SIP, FD or stock holding to watch it grow.</Text>
+            </View>
+          ) : (
+            investments.map((v) => (
+              <View key={v.id} style={styles.investRow}>
+                <View style={[styles.investTag, { backgroundColor: v.bg }]}>
+                  <Text style={[styles.investTagText, { color: v.fg }]}>{v.tag}</Text>
+                </View>
+                <View style={styles.investCopy}>
+                  <Text style={styles.investName}>{v.name}</Text>
+                  <Text style={styles.investSub}>{v.sub}</Text>
+                </View>
+                <View style={styles.investAmounts}>
+                  <Text style={[styles.investCurrent, moneyTextStyle]}>{v.current}</Text>
+                  <Text style={[styles.investGain, { color: v.gainColor }]}>{v.gain}</Text>
+                </View>
+                <Pressable
+                  hitSlop={8}
+                  style={styles.deleteBtn}
+                  onPress={() => confirmDeleteInvestment(v.id)}
+                >
+                  <Feather name="trash-2" size={15} color="#C0B9AF" />
                 </Pressable>
               </View>
-            </View>
-          ))}
-        </DesignGrid>
-      </Card>
+            ))
+          )}
+        </Card>
+      </ScreenScaffold>
 
-      <Card size="large" style={styles.investCard}>
-        <DesignSectionHeader
-          title="Investments"
-          subtitle="SIPs, stocks, PPF, FDs and gold in one place."
-          actionLabel="Add investment"
-          onAction={() => {}}
-        />
-        <View style={styles.investBanner}>
-          <Text style={styles.investBannerLeft}>Invested {compact(stats.invested)}</Text>
-          <Text
-            style={[
-              styles.investBannerRight,
-              { color: gainPositive ? colors.successValue : colors.dangerValue },
-            ]}
-          >
-            {gainPositive ? '+' : '−'}
-            {compact(Math.abs(stats.gain))} ({gainPositive ? '+' : '−'}
-            {Math.abs(Number(stats.gainPct))}%)
-          </Text>
-        </View>
-        {investments.map((v) => (
-          <View key={v.id} style={styles.investRow}>
-            <View style={[styles.investTag, { backgroundColor: v.bg }]}>
-              <Text style={[styles.investTagText, { color: v.fg }]}>{v.tag}</Text>
-            </View>
-            <View style={styles.investCopy}>
-              <Text style={styles.investName}>{v.name}</Text>
-              <Text style={styles.investSub}>{v.sub}</Text>
-            </View>
-            <View style={styles.investAmounts}>
-              <Text style={[styles.investCurrent, moneyTextStyle]}>{v.current}</Text>
-              <Text style={[styles.investGain, { color: v.gainColor }]}>{v.gain}</Text>
-            </View>
-            <Pressable hitSlop={8} style={styles.deleteBtn}>
-              <Feather name="trash-2" size={15} color="#C0B9AF" />
-            </Pressable>
-          </View>
-        ))}
-      </Card>
-    </ScreenScaffold>
+      <Sheet visible={goalSheetOpen} onClose={closeGoal} variant="center">
+        <ModalHeader title="New savings goal" onClose={closeGoal} />
+        <ModalBody>
+          <ModalAmountField label="Target amount" value={goalTarget} onChangeText={setGoalTarget} />
+          <ModalTextField
+            label="Goal name"
+            value={goalName}
+            onChangeText={setGoalName}
+            placeholder="e.g. Emergency fund"
+          />
+          <ModalTextField
+            label="Already saved"
+            value={goalSaved}
+            onChangeText={setGoalSaved}
+            placeholder="0"
+            numeric
+          />
+          <ModalError message={goalError} />
+          <ModalSave label="Save" onPress={handleCreateGoal} loading={createGoal.isPending} />
+        </ModalBody>
+      </Sheet>
+
+      <Sheet visible={investSheetOpen} onClose={closeInvest} variant="center">
+        <ModalHeader title="Add investment" onClose={closeInvest} />
+        <ModalBody>
+          <ModalAmountField
+            label="Amount invested"
+            value={investAmount}
+            onChangeText={setInvestAmount}
+          />
+          <ModalTextField
+            label="Investment name"
+            value={investName}
+            onChangeText={setInvestName}
+            placeholder="e.g. Nifty 50 Index Fund"
+          />
+          <ModalChips
+            label="Instrument"
+            options={INVEST_KINDS}
+            value={investKind}
+            onChange={setInvestKind}
+          />
+          <ModalTextField
+            label="Current value"
+            value={investCurrent}
+            onChangeText={setInvestCurrent}
+            placeholder="0"
+            numeric
+          />
+          <ModalError message={investError} />
+          <ModalSave
+            label="Save"
+            onPress={handleCreateInvestment}
+            loading={createInvestment.isPending}
+          />
+        </ModalBody>
+      </Sheet>
+
+      <Sheet visible={!!contributeGoalId} onClose={closeContribute} variant="center">
+        <ModalHeader title="Add to goal" onClose={closeContribute} />
+        <ModalBody>
+          <ModalAmountField
+            label="Amount to add"
+            value={contributeAmount}
+            onChangeText={setContributeAmount}
+          />
+          <ModalDateNoteRow
+            date={contributeDate}
+            onDate={setContributeDate}
+            note={contributeNote}
+            onNote={setContributeNote}
+          />
+          <ModalError message={contributeError} />
+          <ModalSave
+            label="Add money"
+            onPress={handleContribute}
+            loading={contributeToGoal.isPending}
+          />
+        </ModalBody>
+      </Sheet>
+    </>
   );
 }
 
@@ -359,6 +680,53 @@ const styles = StyleSheet.create({
     color: colors.surface,
   },
   investCard: { padding: 0, overflow: 'hidden' },
+  investHeader: { paddingTop: 22, paddingHorizontal: 22 },
+  emptyGoals: {
+    marginTop: 8,
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  emptyInvest: {
+    paddingVertical: 50,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    color: colors.textEmpty,
+    textAlign: 'center',
+  },
+  emptyHint: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    color: colors.textCaption,
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  sheetForm: { gap: 12, paddingBottom: 8 },
+  sheetTitle: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 17,
+    letterSpacing: -0.4,
+    color: colors.textPrimary,
+  },
+  input: {
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+  },
   investBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -412,4 +780,16 @@ const styles = StyleSheet.create({
   },
   investGain: { fontFamily: fontFamily.bold, fontSize: 11.5, marginTop: 2 },
   deleteBtn: { padding: 4 },
+  goalRemoveBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalRemoveLabel: {
+    fontSize: 18,
+    lineHeight: 20,
+    color: '#C0B9AF',
+  },
 });

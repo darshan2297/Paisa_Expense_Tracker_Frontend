@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { markAppLocked, markAppUnlocked } from '@/features/appLock/unlockSession';
+
 /**
  * Device-level app-lock state — distinct from `sessionStore`'s
  * authentication state. A user can be authenticated (has a valid backend
@@ -18,7 +20,13 @@ export type AppLockState = {
   isHydrating: boolean;
   setHasPinConfigured: (value: boolean) => void;
   setBiometricEnabled: (value: boolean) => void;
+  /** Explicit lock/unlock from UI — also updates the web unlock session. */
   setLocked: (value: boolean) => void;
+  /**
+   * Boot-time lock flag only. Must NOT touch sessionStorage: calling
+   * `setLocked(true)` during hydrate would clear a just-read unlock session.
+   */
+  applyHydratedLockState: (locked: boolean) => void;
   setHydrating: (value: boolean) => void;
 };
 
@@ -29,7 +37,15 @@ export const useAppLockStore = create<AppLockState>((set) => ({
   isHydrating: true,
   setHasPinConfigured: (value) => set({ hasPinConfigured: value }),
   setBiometricEnabled: (value) => set({ biometricEnabled: value }),
-  setLocked: (value) => set({ isLocked: value }),
+  setLocked: (value) => {
+    if (value) {
+      markAppLocked();
+    } else {
+      markAppUnlocked();
+    }
+    set({ isLocked: value });
+  },
+  applyHydratedLockState: (locked) => set({ isLocked: locked }),
   setHydrating: (value) => set({ isHydrating: value }),
 }));
 

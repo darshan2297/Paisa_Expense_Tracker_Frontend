@@ -1,15 +1,27 @@
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { Card } from '@/components/Card';
+import { exportReport } from '@/features/reports/api';
+import { useReport } from '@/features/reports/hooks';
+import type { ReportType } from '@/features/reports/types';
+import { downloadBlob } from '@/utils/filePicker';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth, formatYearMonthLabel } from '@/utils/date';
 
-const REPORT_TABS = [
+const REPORT_TABS: { id: ReportType; label: string }[] = [
   { id: 'monthly', label: 'Monthly report' },
   { id: 'yearly', label: 'Yearly report' },
   { id: 'income', label: 'Income report' },
@@ -22,41 +34,36 @@ const REPORT_TABS = [
   { id: 'tax', label: 'Tax summary' },
 ];
 
-const REP_SUMMARY = [
-  { label: 'Total spent', value: '₹85,749' },
-  { label: 'Categories', value: '10' },
-  { label: 'Transactions', value: '42' },
-  { label: 'Daily average', value: '₹2,766' },
-];
-
-const REP_CHART = [
-  { label: 'Rent', height: 154, color: '#A2701F' },
-  { label: 'Groce', height: 29, color: '#2F7D6E' },
-  { label: 'Food', height: 23, color: colors.danger },
-  { label: 'Trans', height: 15, color: colors.accent },
-  { label: 'Shop', height: 17, color: '#A84A7C' },
-  { label: 'Util', height: 14, color: '#96702C' },
-  { label: 'Insur', height: 12, color: '#3E6E9E' },
-  { label: 'Other', height: 9, color: '#8A7F6E' },
-];
-
-const REP_ROWS = [
-  { cells: ['Rent', '1', '₹36,000', '42%'] },
-  { cells: ['Groceries', '8', '₹6,850', '8%'] },
-  { cells: ['Food & Dining', '12', '₹5,420', '6%'] },
-  { cells: ['Transport', '6', '₹3,650', '4%'] },
-  { cells: ['Shopping', '4', '₹4,100', '5%'] },
-  { cells: ['Utilities', '3', '₹7,680', '9%'] },
-  { cells: ['Insurance', '2', '₹6,800', '8%'] },
-  { cells: ['Health', '3', '₹2,800', '3%'] },
-];
-
 const REP_HEADS = ['Category', 'Count', 'Amount', 'Share'];
 
 /** Design HTML `isReports` — exportable financial reports. */
 export default function ReportsScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const [activeTab, setActiveTab] = useState('monthly');
+  const [activeTab, setActiveTab] = useState<ReportType>('monthly');
+  const [exporting, setExporting] = useState<string | null>(null);
+  const { data: report } = useReport(activeTab, month);
+
+  const handleExport = async (format: 'csv' | 'pdf') => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Not supported', 'Report download is available on web only for now.');
+      return;
+    }
+    setExporting(format);
+    try {
+      const blob = await exportReport(activeTab, month, format);
+      downloadBlob(blob, `${activeTab}-${month}.${format}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Export failed';
+      Alert.alert('Export failed', message);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const activeLabel = REPORT_TABS.find((t) => t.id === activeTab)?.label ?? 'Report';
+  const summary = report?.summary ?? [];
+  const chart = report?.chart ?? [];
+  const rows = report?.rows ?? [];
 
   return (
     <ScreenScaffold month={month} onMonthChange={setMonth}>
@@ -85,58 +92,98 @@ export default function ReportsScreen() {
       <Card size="large" style={styles.reportCard}>
         <View style={styles.reportHeader}>
           <View style={styles.reportCopy}>
-            <Text style={styles.reportTitle}>Monthly report</Text>
+            <Text style={styles.reportTitle}>{activeLabel}</Text>
             <Text style={styles.reportSub}>
-              Income, spending and savings for one month · {formatYearMonthLabel(month)}
+              {activeTab === 'monthly'
+                ? `Income, spending and savings for one month · ${formatYearMonthLabel(month)}`
+                : `Report for ${formatYearMonthLabel(month)}`}
             </Text>
           </View>
           <View style={styles.exportRow}>
-            {['CSV', 'PDF', 'Excel'].map((label) => (
-              <Pressable key={label} style={styles.exportBtn}>
-                <Feather name="download" size={13} color="#453F37" />
-                <Text style={styles.exportText}>{label}</Text>
-              </Pressable>
-            ))}
+            {(['CSV', 'PDF'] as const).map((label) => {
+              const format = label.toLowerCase() as 'csv' | 'pdf';
+              const busy = exporting === format;
+              return (
+                <Pressable
+                  key={label}
+                  disabled={!!exporting}
+                  onPress={() => handleExport(format)}
+                  style={[styles.exportBtn, busy && styles.exportBtnBusy]}
+                >
+                  {busy ? (
+                    <ActivityIndicator size="small" color="#453F37" />
+                  ) : (
+                    <Feather name="download" size={13} color="#453F37" />
+                  )}
+                  <Text style={styles.exportText}>{label}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              style={[styles.exportBtn, styles.exportBtnDisabled]}
+              onPress={() =>
+                Alert.alert('Coming soon', 'Excel export is not supported by the API yet.')
+              }
+            >
+              <Feather name="download" size={13} color="#B7B0A6" />
+              <Text style={[styles.exportText, styles.exportTextDisabled]}>Excel</Text>
+            </Pressable>
           </View>
         </View>
 
-        <DesignGrid cols={4} tabletCols={2} narrowCols={1} style={styles.summaryGrid}>
-          {REP_SUMMARY.map((s) => (
-            <View key={s.label} style={styles.summaryTile}>
-              <Text style={styles.summaryLabel}>{s.label}</Text>
-              <Text style={[styles.summaryValue, moneyTextStyle]}>{s.value}</Text>
-            </View>
-          ))}
-        </DesignGrid>
+        {summary.length === 0 && chart.length === 0 && rows.length === 0 ? (
+          <Text style={styles.emptyHint}>No report data for this period.</Text>
+        ) : (
+          <>
+            {summary.length > 0 ? (
+              <DesignGrid cols={4} tabletCols={2} narrowCols={1} style={styles.summaryGrid}>
+                {summary.map((s) => (
+                  <View key={s.label} style={styles.summaryTile}>
+                    <Text style={styles.summaryLabel}>{s.label}</Text>
+                    <Text style={[styles.summaryValue, moneyTextStyle]}>{s.value}</Text>
+                  </View>
+                ))}
+              </DesignGrid>
+            ) : null}
 
-        <View style={styles.chartArea}>
-          {REP_CHART.map((b) => (
-            <View key={b.label} style={styles.chartCol}>
-              <View style={[styles.chartBar, { height: b.height, backgroundColor: b.color }]} />
-              <Text style={styles.chartLabel}>{b.label}</Text>
-            </View>
-          ))}
-        </View>
+            {chart.length > 0 ? (
+              <View style={styles.chartArea}>
+                {chart.map((b) => (
+                  <View key={b.label} style={styles.chartCol}>
+                    <View
+                      style={[styles.chartBar, { height: b.height, backgroundColor: b.color }]}
+                    />
+                    <Text style={styles.chartLabel}>{b.label}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
-        <View style={styles.tableHead}>
-          {REP_HEADS.map((h) => (
-            <Text key={h} style={styles.th}>
-              {h}
-            </Text>
-          ))}
-        </View>
-        {REP_ROWS.map((r, i) => (
-          <View key={i} style={styles.tableRow}>
-            {r.cells.map((c, ci) => (
-              <Text
-                key={ci}
-                style={[styles.td, ci === 0 && styles.tdBold, ci >= 2 && moneyTextStyle]}
-              >
-                {c}
-              </Text>
-            ))}
-          </View>
-        ))}
+            {rows.length > 0 ? (
+              <>
+                <View style={styles.tableHead}>
+                  {REP_HEADS.map((h) => (
+                    <Text key={h} style={styles.th}>
+                      {h}
+                    </Text>
+                  ))}
+                </View>
+                {rows.map((r, i) => (
+                  <View key={i} style={styles.tableRow}>
+                    {r.cells.map((c, ci) => (
+                      <Text
+                        key={ci}
+                        style={[styles.td, ci === 0 && styles.tdBold, ci >= 2 && moneyTextStyle]}
+                      >
+                        {c}
+                      </Text>
+                    ))}
+                  </View>
+                ))}
+              </>
+            ) : null}
+          </>
+        )}
       </Card>
     </ScreenScaffold>
   );
@@ -198,6 +245,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSubtle,
   },
   exportText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: '#453F37' },
+  exportBtnBusy: { opacity: 0.7 },
+  exportBtnDisabled: { borderColor: colors.borderSubtle, backgroundColor: colors.surfaceSubtle },
+  exportTextDisabled: { color: '#B7B0A6' },
+  emptyHint: {
+    paddingVertical: 40,
+    textAlign: 'center',
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    color: colors.textCaption,
+  },
   summaryGrid: { marginTop: 22 },
   summaryTile: {
     padding: 16,

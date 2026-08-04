@@ -10,9 +10,18 @@ const BIOMETRIC_ENABLED_KEY = 'paisa.appLock.biometricEnabled';
  * the lock screen, since the user explicitly skipped or disabled it.
  */
 export async function isBiometricEnabled(): Promise<boolean> {
-  return (await secureStorage.getItem(BIOMETRIC_ENABLED_KEY)) === 'true';
+  try {
+    return (await secureStorage.getItem(BIOMETRIC_ENABLED_KEY)) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 export async function setBiometricEnabled(enabled: boolean): Promise<void> {
-  await secureStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled ? 'true' : 'false');
+  try {
+    await secureStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Best-effort preference write — a failure here should not block the
+    // PIN flow it's usually called alongside (see clearDeviceAppLock).
+  }
 }

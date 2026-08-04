@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { HeroCard } from '@/components/HeroCard';
-import type { NetWorthPart } from '@/mock/dashboard';
+import type { NetWorthPart } from '@/features/dashboard/types';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
@@ -30,12 +30,14 @@ export function NetWorthHero({ netWorth, delta, deltaPositive, parts }: NetWorth
 
       <View style={styles.partsGrid}>
         {parts.map((part) => (
-          <View key={part.label} style={[styles.partTile, { width: partWidth }]}>
-            <View style={styles.partHeader}>
-              <View style={[styles.dot, { backgroundColor: part.color }]} />
-              <Text style={styles.partLabel}>{part.label}</Text>
+          <View key={part.label} style={[styles.partCell, { width: partWidth }]}>
+            <View style={styles.partTile}>
+              <View style={styles.partHeader}>
+                <View style={[styles.dot, { backgroundColor: part.color }]} />
+                <Text style={styles.partLabel}>{part.label}</Text>
+              </View>
+              <Text style={[styles.partValue, moneyTextStyle]}>{part.value}</Text>
             </View>
-            <Text style={[styles.partValue, moneyTextStyle]}>{part.value}</Text>
           </View>
         ))}
       </View>
@@ -46,7 +48,7 @@ export function NetWorthHero({ netWorth, delta, deltaPositive, parts }: NetWorth
 const styles = StyleSheet.create({
   hero: {
     paddingVertical: 26,
-    paddingHorizontal: 28,
+    paddingHorizontal: 26,
     flex: 1,
     minWidth: 0,
   },
@@ -58,6 +60,7 @@ const styles = StyleSheet.create({
     color: colors.heroTextEyebrow,
   },
   value: {
+    fontFamily: fontFamily.extrabold,
     fontSize: 44,
     color: colors.heroText,
     marginTop: spacing.sm,
@@ -71,8 +74,13 @@ const styles = StyleSheet.create({
   partsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 11,
+    rowGap: 11,
+    marginHorizontal: -5.5,
     marginTop: spacing.xxl,
+  },
+  partCell: {
+    paddingHorizontal: 5.5,
+    minWidth: 0,
   },
   partTile: {
     paddingVertical: 12,

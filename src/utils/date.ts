@@ -29,6 +29,28 @@ export function formatDateTime(date: Date | string | number): string {
   return `${datePart}, ${timePart}`;
 }
 
+/** e.g. "Today, 9:02 AM" or "Yesterday, 9:14 PM" or "14 Jul 2026" */
+export function formatRelativeDateTime(date: Date | string | number): string {
+  const d = new Date(date);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayDiff = Math.round((startOfToday.getTime() - startOfTarget.getTime()) / 86_400_000);
+
+  const timePart = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+
+  if (dayDiff === 0) return `Today, ${timePart}`;
+  if (dayDiff === 1) return `Yesterday, ${timePart}`;
+  return formatShortDate(d);
+}
+
+/** e.g. "4.2 MB" */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /** e.g. "Aug 2026" — used for month-grouped ledgers/statements. */
 export function formatMonthYear(date: Date | string | number): string {
   return new Date(date).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });

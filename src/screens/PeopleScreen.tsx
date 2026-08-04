@@ -1,22 +1,38 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { DesignKpiCard, DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { LEDGER_DIRS } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalModeTabs,
+  ModalSave,
+  ModalTextField,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import {
+  useCreateLedgerEntry,
+  useDeleteLedgerEntry,
+  useLedger,
+  useLedgerPeople,
+} from '@/features/ledger/hooks';
+import type { LedgerEntry } from '@/features/ledger/types';
 import { fmt, initials } from '@/mock/format';
-import { MOCK_LEDGER, type MockLedgerEntry } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth } from '@/utils/date';
 
-const DIRS: Record<
-  MockLedgerEntry['dir'],
-  { label: string; sign: 1 | -1; dot: string; amountColor: string }
-> = {
+type LedgerDir = 'lent' | 'received' | 'borrowed' | 'repaid';
+
+const DIRS: Record<LedgerDir, { label: string; sign: 1 | -1; dot: string; amountColor: string }> = {
   lent: { label: 'I gave money', sign: 1, dot: '#7FA87C', amountColor: colors.successValue },
   received: { label: 'They returned', sign: -1, dot: '#7FA87C', amountColor: colors.successValue },
   borrowed: { label: 'I took money', sign: -1, dot: '#E08A70', amountColor: colors.dangerValue },
@@ -40,17 +56,20 @@ function entryDateShort(iso: string): string {
   });
 }
 
-function peopleFromLedger(ledger: MockLedgerEntry[]) {
-  const map = new Map<string, MockLedgerEntry[]>();
+function peopleFromLedger(ledger: LedgerEntry[]) {
+  const map = new Map<string, LedgerEntry[]>();
   for (const entry of ledger) {
-    const list = map.get(entry.person) ?? [];
+    const list = map.get(entry.person_name) ?? [];
     list.push(entry);
-    map.set(entry.person, list);
+    map.set(entry.person_name, list);
   }
   return Array.from(map.entries())
     .map(([name, entries]) => {
       const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
-      const net = sorted.reduce((sum, e) => sum + e.amount * DIRS[e.dir].sign, 0);
+      const net = sorted.reduce((sum, e) => {
+        const dir = DIRS[e.direction as LedgerDir];
+        return sum + Number(e.amount) * (dir?.sign ?? 0);
+      }, 0);
       return { name, entries: sorted, net };
     })
     .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
@@ -59,13 +78,48 @@ function peopleFromLedger(ledger: MockLedgerEntry[]) {
 /** Design HTML `isPeople` — receivable/payable/net summary and people cards. */
 export default function PeopleScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const [ledger, setLedger] = useState(MOCK_LEDGER);
   const [openPerson, setOpenPerson] = useState<string | null>(null);
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [personName, setPersonName] = useState('');
+  const [direction, setDirection] = useState<LedgerDir>('lent');
+  const [amount, setAmount] = useState('');
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [formError, setFormError] = useState('');
 
-  const people = useMemo(() => peopleFromLedger(ledger), [ledger]);
+  const { data: ledger = [] } = useLedger();
+  const { data: peopleBalances = [] } = useLedgerPeople();
+  const deleteEntry = useDeleteLedgerEntry();
+  const createEntry = useCreateLedgerEntry();
 
-  const owedToMe = people.filter((p) => p.net > 0).reduce((s, p) => s + p.net, 0);
-  const iOwe = people.filter((p) => p.net < 0).reduce((s, p) => s - p.net, 0);
+  function confirmDeleteEntry(entryId: string) {
+    Alert.alert('Delete this entry?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteEntry.mutate(entryId) },
+    ]);
+  }
+
+  const people = useMemo(() => {
+    const fromEntries = peopleFromLedger(ledger);
+    if (peopleBalances.length === 0) return fromEntries;
+
+    const netByPerson = new Map(peopleBalances.map((p) => [p.person_name, Number(p.net_balance)]));
+    return fromEntries.map((person) => ({
+      ...person,
+      net: netByPerson.get(person.name) ?? person.net,
+    }));
+  }, [ledger, peopleBalances]);
+
+  const owedToMe = peopleBalances.length
+    ? peopleBalances
+        .filter((p) => Number(p.net_balance) > 0)
+        .reduce((s, p) => s + Number(p.net_balance), 0)
+    : people.filter((p) => p.net > 0).reduce((s, p) => s + p.net, 0);
+  const iOwe = peopleBalances.length
+    ? peopleBalances
+        .filter((p) => Number(p.net_balance) < 0)
+        .reduce((s, p) => s - Number(p.net_balance), 0)
+    : people.filter((p) => p.net < 0).reduce((s, p) => s - p.net, 0);
   const netLoan = owedToMe - iOwe;
   const netLoanColor =
     Math.abs(netLoan) < 1
@@ -74,9 +128,61 @@ export default function PeopleScreen() {
         ? colors.successValue
         : colors.dangerValue;
 
-  function removeEntry(id: string) {
-    setLedger((prev) => prev.filter((e) => e.id !== id));
-  }
+  const resetAddForm = () => {
+    setPersonName('');
+    setDirection('lent');
+    setAmount('');
+    setEntryDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setFormError('');
+  };
+
+  const openAddSheet = (prefillName?: string) => {
+    resetAddForm();
+    if (prefillName) setPersonName(prefillName);
+    setAddSheetOpen(true);
+  };
+
+  const handleCreateEntry = () => {
+    const trimmedName = personName.trim();
+    const trimmedAmount = amount.trim();
+    if (!trimmedAmount || Number(trimmedAmount) <= 0) {
+      setFormError('Enter an amount greater than zero.');
+      return;
+    }
+    if (!trimmedName) {
+      setFormError('Who is this with?');
+      return;
+    }
+    createEntry.mutate(
+      {
+        person_name: trimmedName,
+        direction,
+        amount: trimmedAmount,
+        date: entryDate,
+        note: note.trim() || null,
+      },
+      {
+        onSuccess: () => {
+          setAddSheetOpen(false);
+          resetAddForm();
+        },
+        onError: () => setFormError('Could not save that record. Try again.'),
+      },
+    );
+  };
+
+  const handleSettle = (person: { name: string; net: number }) => {
+    if (Math.abs(person.net) < 1) return;
+    const settleDirection: LedgerDir = person.net > 0 ? 'received' : 'repaid';
+    createEntry.mutate({
+      person_name: person.name,
+      direction: settleDirection,
+      amount: String(Math.abs(person.net)),
+      date: new Date().toISOString().slice(0, 10),
+      note: 'Settled up',
+    });
+  };
 
   return (
     <ScreenScaffold month={month} onMonthChange={setMonth}>
@@ -104,7 +210,7 @@ export default function PeopleScreen() {
         title="Everyone you have money with"
         actionLabel="+ Add record"
         darkAction
-        onAction={() => router.push('/(tabs)/transactions')}
+        onAction={() => openAddSheet()}
       />
 
       <View style={styles.list}>
@@ -161,8 +267,17 @@ export default function PeopleScreen() {
                         {settled ? '—' : fmt(person.net)}
                       </Text>
                     </View>
-                    <Pressable style={styles.settleBtn}>
-                      <Text style={styles.settleBtnText}>Settle</Text>
+                    <Pressable
+                      style={styles.settleBtn}
+                      onPress={() => {
+                        if (settled) {
+                          openAddSheet(person.name);
+                        } else {
+                          handleSettle(person);
+                        }
+                      }}
+                    >
+                      <Text style={styles.settleBtnText}>{settled ? 'Add' : 'Settle'}</Text>
                     </Pressable>
                     <Feather
                       name="chevron-down"
@@ -176,13 +291,13 @@ export default function PeopleScreen() {
                 {open ? (
                   <View style={styles.entries}>
                     {person.entries.map((entry) => {
-                      const dir = DIRS[entry.dir];
+                      const dir = DIRS[entry.direction as LedgerDir] ?? DIRS.lent;
                       const credit = dir.sign > 0;
                       return (
                         <View key={entry.id} style={styles.entryRow}>
                           <View style={[styles.entryDot, { backgroundColor: dir.dot }]} />
                           <Text style={styles.entryLabel}>{dir.label}</Text>
-                          <Text style={styles.entryNote}>{entry.note}</Text>
+                          <Text style={styles.entryNote}>{entry.note ?? ''}</Text>
                           <Text style={styles.entryDate}>{entryDateShort(entry.date)}</Text>
                           <Text
                             style={[
@@ -191,10 +306,10 @@ export default function PeopleScreen() {
                               { color: credit ? colors.successValue : colors.dangerValue },
                             ]}
                           >
-                            {(credit ? '+' : '−') + fmt(entry.amount)}
+                            {(credit ? '+' : '−') + fmt(Number(entry.amount))}
                           </Text>
                           <Pressable
-                            onPress={() => removeEntry(entry.id)}
+                            onPress={() => confirmDeleteEntry(entry.id)}
                             style={styles.entryRemove}
                           >
                             <Text style={styles.entryRemoveText}>×</Text>
@@ -209,6 +324,40 @@ export default function PeopleScreen() {
           })
         )}
       </View>
+
+      <Sheet
+        visible={addSheetOpen}
+        onClose={() => {
+          setAddSheetOpen(false);
+          resetAddForm();
+        }}
+        variant="center"
+      >
+        <ModalHeader
+          title="Lend or borrow"
+          onClose={() => {
+            setAddSheetOpen(false);
+            resetAddForm();
+          }}
+        />
+        <ModalModeTabs
+          tabs={LEDGER_DIRS}
+          active={direction}
+          onChange={(id) => setDirection(id as LedgerDir)}
+        />
+        <ModalBody>
+          <ModalAmountField label="Amount" value={amount} onChangeText={setAmount} />
+          <ModalTextField
+            label="Person"
+            value={personName}
+            onChangeText={setPersonName}
+            placeholder="Name"
+          />
+          <ModalDateNoteRow date={entryDate} onDate={setEntryDate} note={note} onNote={setNote} />
+          <ModalError message={formError} />
+          <ModalSave label="Save" onPress={handleCreateEntry} loading={createEntry.isPending} />
+        </ModalBody>
+      </Sheet>
     </ScreenScaffold>
   );
 }
@@ -307,4 +456,35 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
+  sheetTitle: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 18,
+    letterSpacing: -0.45,
+    color: colors.textPrimary,
+    marginBottom: 16,
+  },
+  sheetForm: { gap: 12 },
+  input: {
+    height: 46,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceSubtle,
+    fontFamily: fontFamily.semibold,
+    fontSize: 13.5,
+    color: colors.textPrimary,
+  },
+  dirRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  dirChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  dirChipSelected: { borderColor: colors.accent, backgroundColor: colors.accentTint },
+  dirChipText: { fontFamily: fontFamily.bold, fontSize: 11.5, color: colors.textMuted },
+  dirChipTextSelected: { color: colors.accent },
 });

@@ -42,7 +42,12 @@ function BiometricOption({
         <Text style={styles.optionLabel}>{label}</Text>
         <Text style={styles.optionSub}>{sub}</Text>
       </View>
-      <ToggleSwitch value={value} onValueChange={onValueChange} disabled={disabled} />
+      <ToggleSwitch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        variant="onDark"
+      />
     </Pressable>
   );
 }

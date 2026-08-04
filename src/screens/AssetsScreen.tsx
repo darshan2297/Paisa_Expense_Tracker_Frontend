@@ -1,13 +1,30 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
-import { DesignDarkHero, DesignKpiCard } from '@/components/design/DesignPrimitives';
+import { DesignDarkHero } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { ASSET_KINDS } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalChips,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalSave,
+  ModalTextField,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import {
+  useAssets,
+  useAssetsSummary,
+  useCreateAsset,
+  useDeleteAsset,
+} from '@/features/assets/hooks';
 import { compact, pctWidth } from '@/mock/format';
-import { MOCK_ASSETS } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth, formatShortDate } from '@/utils/date';
@@ -23,8 +40,29 @@ const ASSET_LABELS: Record<string, string> = {
   CASH: 'Cash in hand',
 };
 
+const ASSET_COLORS: Record<string, [string, string]> = {
+  HOUSE: ['#EDE9FE', '#5B54D6'],
+  CAR: ['#E5EEF8', '#3E6E9E'],
+  BIKE: ['#E7F0EF', '#2F7D6E'],
+  GOLD: ['#FBE9D2', '#A2701F'],
+  JEWEL: ['#FAE5F0', '#A84A7C'],
+  TECH: ['#F3EFE9', '#8A7F6E'],
+  BANK: ['#E2F0E9', '#2F7D5D'],
+  CASH: ['#FAEED8', '#96702C'],
+};
+
+const ALLOC_LABELS: Record<string, string> = {
+  HOUSE: 'Property',
+  CAR: 'Vehicles',
+  BIKE: 'Vehicles',
+  GOLD: 'Gold & jewellery',
+  JEWEL: 'Gold & jewellery',
+  TECH: 'Other',
+  BANK: 'Cash & bank',
+  CASH: 'Cash & bank',
+};
+
 const ALLOC_COLORS = ['#5B54D6', '#3E6E9E', '#A2701F', '#2F7D5D', '#2F7D6E', '#8A7F6E'];
-const TODAY = '2026-08-02';
 
 function monthsBetween(a: string, b: string): number {
   const d1 = new Date(`${a}T00:00:00`);
@@ -35,47 +73,35 @@ function monthsBetween(a: string, b: string): number {
 /** Design HTML `isAssets` — total hero, allocation, asset rows. */
 export default function AssetsScreen() {
   const [month, setMonth] = useState(currentYearMonth());
+  const { data: assetsData } = useAssets();
+  const { data: summary } = useAssetsSummary();
+  const deleteAsset = useDeleteAsset();
+  const [addOpen, setAddOpen] = useState(false);
+
+  function confirmDeleteAsset(assetId: string) {
+    Alert.alert('Delete this asset?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteAsset.mutate(assetId) },
+    ]);
+  }
+
+  const assetsList = assetsData ?? summary?.assets ?? [];
+  const today = new Date().toISOString().slice(0, 10);
 
   const data = useMemo(() => {
-    const assetsTotal = MOCK_ASSETS.reduce((a, x) => a + x.current, 0);
-    const purchaseTotal = MOCK_ASSETS.reduce((a, x) => a + x.purchase, 0);
+    const assetsTotal = summary
+      ? Number(summary.total_value)
+      : assetsList.reduce((a, x) => a + Number(x.current_value), 0);
+    const purchaseTotal = assetsList.reduce((a, x) => a + Number(x.purchase_value), 0);
     const gain = assetsTotal - purchaseTotal;
 
-    const cashTotal = MOCK_ASSETS.filter((a) => a.kind === 'CASH' || a.kind === 'BANK').reduce(
-      (a, x) => a + x.current,
-      0,
-    );
-    const portfolio = 1269900;
-
-    const allocBase: [string, number][] = [
-      [
-        'Property',
-        MOCK_ASSETS.filter((a) => a.kind === 'HOUSE').reduce((s, a) => s + a.current, 0),
-      ],
-      [
-        'Vehicles',
-        MOCK_ASSETS.filter((a) => a.kind === 'CAR' || a.kind === 'BIKE').reduce(
-          (s, a) => s + a.current,
-          0,
-        ),
-      ],
-      [
-        'Gold & jewellery',
-        MOCK_ASSETS.filter((a) => a.kind === 'GOLD' || a.kind === 'JEWEL').reduce(
-          (s, a) => s + a.current,
-          0,
-        ),
-      ],
-      ['Cash & bank', cashTotal],
-      ['Investments', portfolio],
-      [
-        'Other',
-        MOCK_ASSETS.filter((a) => a.kind === 'TECH' || a.kind === 'OTHER').reduce(
-          (s, a) => s + a.current,
-          0,
-        ),
-      ],
-    ];
+    const allocMap = new Map<string, number>();
+    for (const a of assetsList) {
+      const label = ALLOC_LABELS[a.kind] ?? 'Other';
+      const current = Number(a.current_value);
+      allocMap.set(label, (allocMap.get(label) ?? 0) + current);
+    }
+    const allocBase = [...allocMap.entries()];
     const allocTotal = allocBase.reduce((a, [, v]) => a + v, 0) || 1;
     const alloc = allocBase
       .filter(([, v]) => v > 0)
@@ -87,23 +113,30 @@ export default function AssetsScreen() {
         color: ALLOC_COLORS[i % ALLOC_COLORS.length],
       }));
 
-    const rows = [...MOCK_ASSETS]
-      .sort((a, b) => b.current - a.current)
+    const rows = [...assetsList]
+      .sort((a, b) => Number(b.current_value) - Number(a.current_value))
       .map((a) => {
-        const g = a.current - a.purchase;
-        const pctv = a.purchase ? (g / a.purchase) * 100 : 0;
-        const yrs = Math.max(0.1, monthsBetween(a.date, TODAY) / 12);
+        const purchase = Number(a.purchase_value);
+        const current = Number(a.current_value);
+        const g = current - purchase;
+        const pctv = purchase ? (g / purchase) * 100 : 0;
+        const acquiredOn = a.acquired_on ?? today;
+        const yrs = Math.max(0.1, monthsBetween(acquiredOn, today) / 12);
+        const [bg, fg] = ASSET_COLORS[a.kind] ?? ['#EDE9FE', '#5B54D6'];
         return {
-          ...a,
+          id: a.id,
+          name: a.name,
+          bg,
+          fg,
           tag: ASSET_LABELS[a.kind] ?? a.kind,
-          purchase: compact(a.purchase),
-          current: compact(a.current),
-          date: formatShortDate(a.date),
+          purchase: compact(purchase),
+          current: compact(current),
+          date: a.acquired_on ? formatShortDate(a.acquired_on) : '—',
           gain: `${g >= 0 ? '+' : '−'}${compact(Math.abs(g))}`,
           gainColor: g >= 0 ? colors.successValue : colors.dangerValue,
           rate: `${g >= 0 ? '▲ ' : '▼ '}${Math.abs(pctv / yrs).toFixed(1)}% / yr`,
-          share: `${Math.round((a.current / Math.max(1, assetsTotal)) * 100)}%`,
-          width: pctWidth(a.current, assetsTotal),
+          share: `${Math.round((current / Math.max(1, assetsTotal)) * 100)}%`,
+          width: pctWidth(current, assetsTotal),
         };
       });
 
@@ -113,7 +146,7 @@ export default function AssetsScreen() {
       alloc,
       rows,
     };
-  }, []);
+  }, [assetsList, summary, today]);
 
   const gainPositive = data.gain >= 0;
 
@@ -157,7 +190,7 @@ export default function AssetsScreen() {
 
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Everything you own</Text>
-        <Pressable style={styles.darkBtn}>
+        <Pressable style={styles.darkBtn} onPress={() => setAddOpen(true)}>
           <Feather name="plus" size={14} color={colors.surface} />
           <Text style={styles.darkBtnLabel}>Add asset</Text>
         </Pressable>
@@ -194,13 +227,98 @@ export default function AssetsScreen() {
                 {a.gain} · {a.rate}
               </Text>
             </View>
-            <Pressable hitSlop={8} style={styles.deleteBtn}>
+            <Pressable
+              hitSlop={8}
+              style={styles.deleteBtn}
+              onPress={() => confirmDeleteAsset(a.id)}
+            >
               <Feather name="trash-2" size={15} color="#C0B9AF" />
             </Pressable>
           </View>
         ))}
       </Card>
+
+      <AddAssetSheet visible={addOpen} onClose={() => setAddOpen(false)} />
     </ScreenScaffold>
+  );
+}
+
+/** Mockup `asset` modal — "Add asset". */
+function AddAssetSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const createAsset = useCreateAsset();
+  const [amount, setAmount] = useState('');
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState('HOUSE');
+  const [currentValue, setCurrentValue] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function close() {
+    setAmount('');
+    setName('');
+    setKind('HOUSE');
+    setCurrentValue('');
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setError('');
+    onClose();
+  }
+
+  function submit() {
+    if (!amount || Number(amount) < 0 || !amount.trim()) {
+      setError('Enter the purchase value.');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Give this asset a name.');
+      return;
+    }
+    createAsset.mutate(
+      {
+        name: name.trim(),
+        kind,
+        purchase_value: amount.trim(),
+        current_value: currentValue.trim() || amount.trim(),
+        acquired_on: date,
+      },
+      {
+        onSuccess: close,
+        onError: () => setError('Could not save that asset. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <Sheet visible={visible} onClose={close} variant="center">
+      <ModalHeader title="Add asset" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="Purchase value" value={amount} onChangeText={setAmount} />
+        <ModalTextField
+          label="Asset name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. 2BHK Apartment"
+        />
+        <ModalChips label="Type" options={ASSET_KINDS} value={kind} onChange={setKind} />
+        <ModalTextField
+          label="Current value"
+          value={currentValue}
+          onChangeText={setCurrentValue}
+          placeholder="0"
+          numeric
+        />
+        <ModalDateNoteRow
+          dateLabel="Purchase date"
+          date={date}
+          onDate={setDate}
+          note={note}
+          onNote={setNote}
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save" onPress={submit} loading={createAsset.isPending} />
+      </ModalBody>
+    </Sheet>
   );
 }
 

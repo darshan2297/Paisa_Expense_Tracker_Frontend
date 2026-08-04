@@ -1,6 +1,5 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -8,11 +7,35 @@ import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
 import { DesignKpiCard, DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import type { KindOption } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalChips,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalInfoNote,
+  ModalSave,
+  ModalTextField,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import {
+  useCardPayments,
+  useCards,
+  useCardsSummary,
+  useCreateCard,
+  useDeleteCard,
+  usePayCard,
+  useSpendOnCard,
+} from '@/features/cards/hooks';
+import type { CreditCard } from '@/features/cards/types';
+import { useCategories } from '@/features/categories/hooks';
 import { useTransactionsSummary } from '@/features/transactions/hooks';
 import { compact, fmt, pctWidth } from '@/mock/format';
-import { MOCK_CARDS, cardsSummaryFrom } from '@/mock/seed/cards';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
 
 const CARD_THEMES: [string, string, string][] = [
@@ -20,14 +43,6 @@ const CARD_THEMES: [string, string, string][] = [
   ['#14342B', '#0A1F19', '#8FE0BE'],
   ['#3A2320', '#1F1412', '#F3A48E'],
   ['#2A2620', '#15120F', '#E4D7B4'],
-];
-
-const MOCK_CARD_PAYMENTS = [
-  { id: 'cp1', cardId: 'c1', amount: 21400, date: '2026-07-08' },
-  { id: 'cp2', cardId: 'c2', amount: 38900, date: '2026-07-05' },
-  { id: 'cp3', cardId: 'c3', amount: 74100, date: '2026-07-12' },
-  { id: 'cp4', cardId: 'c1', amount: 16800, date: '2026-06-08' },
-  { id: 'cp5', cardId: 'c3', amount: 58200, date: '2026-06-12' },
 ];
 
 function dateShort(iso: string): string {
@@ -87,10 +102,36 @@ function cardDueChip(dueDay: number, month: string): { label: string; bg: string
 /** Design HTML `isCards` — KPIs, card visuals, utilization, category spend, payment history. */
 export default function CardsScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const [cards, setCards] = useState(MOCK_CARDS);
-  const summary = useTransactionsSummary(month);
+  const { data: apiCards } = useCards();
+  const { data: apiSummary } = useCardsSummary();
+  const { data: apiPayments } = useCardPayments();
+  const deleteCard = useDeleteCard();
+  const payCard = usePayCard();
+  const [addOpen, setAddOpen] = useState(false);
+  const [spendCard, setSpendCard] = useState<CreditCard | null>(null);
+  const cards = apiCards ?? [];
+  // card_only=true: this panel is titled "Category spending on cards" - it
+  // must reflect only card-linked transactions, not the whole month's
+  // expense breakdown (which is what the plain month-scoped summary gives
+  // every other screen).
+  const summary = useTransactionsSummary(month, true);
 
-  const totals = useMemo(() => cardsSummaryFrom(cards), [cards]);
+  const totals = useMemo(() => {
+    if (apiSummary) {
+      return {
+        total_limit: apiSummary.total_limit,
+        total_outstanding: apiSummary.total_outstanding,
+        utilization_pct: apiSummary.utilization_pct,
+      };
+    }
+    const totalLimit = cards.reduce((s, c) => s + Number(c.credit_limit), 0);
+    const totalOutstanding = cards.reduce((s, c) => s + Number(c.outstanding), 0);
+    return {
+      total_limit: String(totalLimit),
+      total_outstanding: String(totalOutstanding),
+      utilization_pct: totalLimit ? (totalOutstanding / totalLimit) * 100 : 0,
+    };
+  }, [apiSummary, cards]);
   const totalLimit = Number(totals.total_limit);
   const totalOut = Number(totals.total_outstanding);
   const totalAvail = Math.max(0, totalLimit - totalOut);
@@ -112,20 +153,16 @@ export default function CardsScreen() {
     });
   }, [cards, month]);
 
-  const cardHistory = useMemo(() => {
-    return MOCK_CARD_PAYMENTS.slice()
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 8)
-      .map((p) => {
-        const cd = cards.find((c) => c.id === p.cardId);
-        return {
-          id: p.id,
-          label: cd ? `${cd.bank} ${cd.name}` : 'Card payment',
-          sub: dateShort(p.date),
-          amount: fmt(p.amount),
-        };
-      });
-  }, [cards]);
+  const cardHistory = useMemo(
+    () =>
+      (apiPayments ?? []).map((row) => ({
+        id: row.id,
+        label: row.label,
+        sub: row.sub,
+        amount: formatINR(Number(row.amount)),
+      })),
+    [apiPayments],
+  );
 
   const cardCats = useMemo(() => {
     const breakdown = summary.data?.category_breakdown ?? [];
@@ -133,14 +170,14 @@ export default function CardsScreen() {
     const max = top.length ? Number(top[0].amount) : 1;
     return top.map((c) => ({
       name: c.name,
-      amount: fmt(Number(c.amount) * 0.45),
+      amount: fmt(Number(c.amount)),
       color: c.color,
       width: pctWidth(Number(c.amount), max),
     }));
   }, [summary.data]);
 
   function removeCard(id: string) {
-    setCards((prev) => prev.filter((c) => c.id !== id));
+    deleteCard.mutate(id);
   }
 
   return (
@@ -184,7 +221,7 @@ export default function CardsScreen() {
         title="Your cards"
         actionLabel="+ Add card"
         darkAction
-        onAction={() => router.push('/(tabs)/wealth')}
+        onAction={() => setAddOpen(true)}
       />
 
       {cards.length === 0 ? (
@@ -259,16 +296,32 @@ export default function CardsScreen() {
                     Cycle {dateShort(stmtDate)} → {dateShort(dueDate)}
                   </Text>
 
-                  <Pressable style={styles.addSpendBtn}>
+                  <Pressable style={styles.addSpendBtn} onPress={() => setSpendCard(card)}>
                     <Feather name="plus" size={14} color="#453F37" />
                     <Text style={styles.addSpendText}>Add spend on this card</Text>
                   </Pressable>
 
                   <View style={styles.payRow}>
-                    <Pressable style={styles.payFullBtn}>
+                    <Pressable
+                      style={styles.payFullBtn}
+                      onPress={() =>
+                        payCard.mutate({
+                          cardId: card.id,
+                          payload: { amount: String(outstanding) },
+                        })
+                      }
+                    >
                       <Text style={styles.payFullText}>Pay full</Text>
                     </Pressable>
-                    <Pressable style={styles.payMinBtn}>
+                    <Pressable
+                      style={styles.payMinBtn}
+                      onPress={() =>
+                        payCard.mutate({
+                          cardId: card.id,
+                          payload: { amount: card.minimum_due },
+                        })
+                      }
+                    >
                       <Text style={styles.payMinText}>Pay minimum</Text>
                     </Pressable>
                   </View>
@@ -284,23 +337,30 @@ export default function CardsScreen() {
           <Card size="large" style={styles.panel}>
             <Text style={styles.panelTitle}>Category spending on cards</Text>
             <View style={styles.catList}>
-              {cardCats.map((cat) => (
-                <View key={cat.name} style={styles.catRow}>
-                  <View style={styles.catHeader}>
-                    <View style={[styles.catDot, { backgroundColor: cat.color }]} />
-                    <Text style={styles.catName}>{cat.name}</Text>
-                    <Text style={[styles.catAmount, moneyTextStyle]}>{cat.amount}</Text>
+              {cardCats.length === 0 ? (
+                <Text style={styles.noHistory}>
+                  No card-linked spending breakdown yet — overall month categories shown when
+                  expenses exist.
+                </Text>
+              ) : (
+                cardCats.map((cat) => (
+                  <View key={cat.name} style={styles.catRow}>
+                    <View style={styles.catHeader}>
+                      <View style={[styles.catDot, { backgroundColor: cat.color }]} />
+                      <Text style={styles.catName}>{cat.name}</Text>
+                      <Text style={[styles.catAmount, moneyTextStyle]}>{cat.amount}</Text>
+                    </View>
+                    <View style={styles.catTrack}>
+                      <View
+                        style={[
+                          styles.catFill,
+                          { width: cat.width as `${number}%`, backgroundColor: cat.color },
+                        ]}
+                      />
+                    </View>
                   </View>
-                  <View style={styles.catTrack}>
-                    <View
-                      style={[
-                        styles.catFill,
-                        { width: cat.width as `${number}%`, backgroundColor: cat.color },
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </Card>
         }
@@ -324,7 +384,172 @@ export default function CardsScreen() {
           </Card>
         }
       />
+
+      <AddCardSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+      <SpendOnCardSheet card={spendCard} onClose={() => setSpendCard(null)} />
     </ScreenScaffold>
+  );
+}
+
+/** Mockup `card` modal — "Add credit card". */
+function AddCardSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const createCard = useCreateCard();
+  const [limit, setLimit] = useState('');
+  const [name, setName] = useState('');
+  const [bank, setBank] = useState('');
+  const [outstanding, setOutstanding] = useState('0');
+  const [dueDay, setDueDay] = useState('10');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function close() {
+    setLimit('');
+    setName('');
+    setBank('');
+    setOutstanding('0');
+    setDueDay('10');
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setError('');
+    onClose();
+  }
+
+  function submit() {
+    if (!limit || Number(limit) <= 0) {
+      setError('Enter a credit limit greater than zero.');
+      return;
+    }
+    if (!name.trim() || !bank.trim()) {
+      setError('Add the card name and issuer.');
+      return;
+    }
+    const due = Math.min(28, Math.max(1, parseInt(dueDay, 10) || 10));
+    createCard.mutate(
+      {
+        name: name.trim(),
+        bank: bank.trim(),
+        // The design form doesn't collect these — sensible defaults keep the
+        // form identical to the mockup while satisfying the API.
+        last4: '0000',
+        credit_limit: limit.trim(),
+        outstanding: String(Math.max(0, Number(outstanding) || 0)),
+        statement_day: due > 15 ? due - 15 : due + 13,
+        due_day: due,
+        opened_on: date || null,
+      },
+      {
+        onSuccess: close,
+        onError: () => setError('Could not save that card. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <Sheet visible={visible} onClose={close} variant="center">
+      <ModalHeader title="Add credit card" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="Credit limit" value={limit} onChangeText={setLimit} />
+        <ModalTextField
+          label="Card name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Millennia"
+        />
+        <ModalTextField
+          label="Insurer"
+          value={bank}
+          onChangeText={setBank}
+          placeholder="e.g. HDFC Life"
+        />
+        <ModalTextField
+          label="Current outstanding"
+          value={outstanding}
+          onChangeText={setOutstanding}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Payment due day of month"
+          value={dueDay}
+          onChangeText={setDueDay}
+          placeholder="10"
+          numeric
+        />
+        <ModalDateNoteRow date={date} onDate={setDate} note={note} onNote={setNote} />
+        <ModalError message={error} />
+        <ModalSave label="Save" onPress={submit} loading={createCard.isPending} />
+      </ModalBody>
+    </Sheet>
+  );
+}
+
+/** Mockup `cardspend` modal — "Spend on card" with category chips + info note. */
+function SpendOnCardSheet({ card, onClose }: { card: CreditCard | null; onClose: () => void }) {
+  const spendOnCard = useSpendOnCard();
+  const { data: categories } = useCategories();
+  const [amount, setAmount] = useState('');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  const options: KindOption[] = useMemo(
+    () =>
+      (categories ?? [])
+        .filter((c) => c.kind === 'expense')
+        .map((c) => ({ id: c.id, label: c.name, color: c.color })),
+    [categories],
+  );
+  const selected = categoryId ?? options[0]?.id ?? '';
+
+  function close() {
+    setAmount('');
+    setCategoryId(null);
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setError('');
+    onClose();
+  }
+
+  function submit() {
+    if (!card) return;
+    if (!amount || Number(amount) <= 0) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+    spendOnCard.mutate(
+      {
+        cardId: card.id,
+        payload: {
+          amount: amount.trim(),
+          note: note.trim() || null,
+          category_id: selected || null,
+        },
+      },
+      {
+        onSuccess: close,
+        onError: () => setError('Could not record that spend. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <Sheet visible={!!card} onClose={close} variant="center">
+      <ModalHeader title="Spend on card" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="Spend amount" value={amount} onChangeText={setAmount} />
+        <ModalChips label="Category" options={options} value={selected} onChange={setCategoryId} />
+        <ModalDateNoteRow date={date} onDate={setDate} note={note} onNote={setNote} />
+        {card ? (
+          <ModalInfoNote
+            text={`Adds to ${card.bank} ${card.name} · outstanding goes up and it is logged as an expense.`}
+          />
+        ) : null}
+        <ModalError message={error} />
+        <ModalSave label="Add to card" onPress={submit} loading={spendOnCard.isPending} />
+      </ModalBody>
+    </Sheet>
   );
 }
 

@@ -7,16 +7,19 @@ import { Input } from '@/components/Input';
 import { Keypad } from '@/components/Keypad';
 import { PinDots } from '@/components/PinDots';
 import { login as loginApi } from '@/features/auth/api';
+import { storeTokens } from '@/api/client';
 import { useProfile } from '@/features/profile/hooks';
 import { useAppLockStore } from '@/stores/appLockStore';
 import { colors } from '@/theme/colors';
 import { fontFamily } from '@/theme/typography';
 
 import { authenticateWithBiometrics, isBiometricAvailable } from './biometrics';
+import { PinSetupFlow } from './PinSetupFlow';
 import { verifyPin } from './pin';
 
 const PIN_LENGTH = 6;
 const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 30;
 
 type Tab = 'pin' | 'fingerprint' | 'face' | 'password';
 
@@ -47,8 +50,16 @@ export function AppLockScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(MAX_ATTEMPTS);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [forgotPinStep, setForgotPinStep] = useState<'idle' | 'reauth' | 'setup'>('idle');
+  const [forgotPassword, setForgotPassword] = useState('');
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+
+  const lockoutActive = lockedUntil !== null;
 
   // Device capability AND user opt-in both have to be true - a supported
   // device with biometrics turned off (skipped during onboarding, or
@@ -59,6 +70,28 @@ export function AppLockScreen() {
     isBiometricAvailable().then(setBiometricSupported);
   }, []);
 
+  // Live countdown for the post-lockout cooldown — ticks every second and
+  // lifts the lockout (resetting attempts) once it elapses, rather than
+  // leaving PIN entry permanently blocked with a message that implied a
+  // cooldown that never actually happened.
+  useEffect(() => {
+    if (lockedUntil === null) {
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000));
+      setCooldownRemaining(remaining);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setAttemptsLeft(MAX_ATTEMPTS);
+        setError(null);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [lockedUntil]);
+
   const unlock = () => {
     setError(null);
     setLocked(false);
@@ -68,11 +101,11 @@ export function AppLockScreen() {
     const remaining = attemptsLeft - 1;
     setAttemptsLeft(remaining);
     setPinInput('');
-    setError(
-      remaining > 0
-        ? `${message} ${remaining} attempt${remaining === 1 ? '' : 's'} left.`
-        : 'Too many attempts. Try again in a moment, or use Password.',
-    );
+    if (remaining > 0) {
+      setError(`${message} ${remaining} attempt${remaining === 1 ? '' : 's'} left.`);
+    } else {
+      setLockedUntil(Date.now() + LOCKOUT_SECONDS * 1000);
+    }
   };
 
   async function handlePinComplete(candidate: string) {
@@ -87,7 +120,7 @@ export function AppLockScreen() {
   }
 
   function onDigit(digit: string) {
-    if (submitting || attemptsLeft <= 0) {
+    if (submitting || lockoutActive) {
       return;
     }
     const next = (pin + digit).slice(0, PIN_LENGTH);
@@ -107,7 +140,9 @@ export function AppLockScreen() {
     if (ok) {
       unlock();
     } else {
-      setError(`${kind} unlock failed or was cancelled.`);
+      // Spec: biometric failure falls back to PIN, not a dead-end error tab.
+      setTab('pin');
+      setError(`${kind} unlock failed or was cancelled. Try your PIN instead.`);
     }
   }
 
@@ -125,6 +160,45 @@ export function AppLockScreen() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function openForgotPin() {
+    setForgotError(null);
+    setForgotPassword('');
+    setForgotPinStep('reauth');
+  }
+
+  function cancelForgotPin() {
+    setForgotPinStep('idle');
+    setForgotPassword('');
+    setForgotError(null);
+  }
+
+  async function onForgotPinSubmit() {
+    if (!profile.data?.email || !forgotPassword) {
+      return;
+    }
+    setForgotSubmitting(true);
+    setForgotError(null);
+    try {
+      // Password proves account ownership; then PinSetupFlow (mode=reset)
+      // writes the new PIN to the account and this device.
+      const tokens = await loginApi({ email: profile.data.email, password: forgotPassword });
+      await storeTokens(tokens.access_token, tokens.refresh_token);
+      setForgotPinStep('setup');
+    } catch {
+      setForgotError('Incorrect password.');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  }
+
+  function onForgotPinComplete() {
+    setForgotPinStep('idle');
+    setForgotPassword('');
+    setAttemptsLeft(MAX_ATTEMPTS);
+    setLockedUntil(null);
+    unlock();
   }
 
   return (
@@ -158,6 +232,9 @@ export function AppLockScreen() {
               disabled={disabled}
               onPress={() => {
                 setError(null);
+                if (t.key !== 'pin') {
+                  cancelForgotPin();
+                }
                 setTab(t.key);
               }}
               style={[
@@ -174,14 +251,56 @@ export function AppLockScreen() {
         })}
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {lockoutActive ? (
+        <Text style={styles.error}>
+          Too many attempts. Try again in {cooldownRemaining}s, or use Fingerprint/Face ID/Password.
+        </Text>
+      ) : error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : null}
 
       <View style={styles.content}>
-        {tab === 'pin' ? (
+        {tab === 'pin' && forgotPinStep === 'idle' ? (
           <View style={styles.pinContent}>
             <PinDots length={PIN_LENGTH} filled={pin.length} />
             <Keypad onDigit={onDigit} onBackspace={onBackspace} />
+            <Pressable onPress={openForgotPin} style={styles.forgotPinBtn}>
+              <Text style={styles.forgotPinLabel}>Forgot PIN?</Text>
+            </Pressable>
           </View>
+        ) : null}
+
+        {tab === 'pin' && forgotPinStep === 'reauth' ? (
+          <View style={styles.passwordContent}>
+            <Text style={styles.forgotPinInfo}>
+              Enter your account password to set a new PIN on this device.
+            </Text>
+            <Input
+              label="Password"
+              secureTextEntry
+              value={forgotPassword}
+              onChangeText={setForgotPassword}
+              style={styles.passwordInput}
+            />
+            {forgotError ? <Text style={styles.error}>{forgotError}</Text> : null}
+            <Pressable
+              onPress={onForgotPinSubmit}
+              disabled={forgotSubmitting || !forgotPassword}
+              style={[
+                styles.unlockButton,
+                (forgotSubmitting || !forgotPassword) && styles.tabDisabled,
+              ]}
+            >
+              <Text style={styles.unlockButtonLabel}>Continue</Text>
+            </Pressable>
+            <Pressable onPress={cancelForgotPin} style={styles.forgotPinBtn}>
+              <Text style={styles.forgotPinLabel}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {tab === 'pin' && forgotPinStep === 'setup' ? (
+          <PinSetupFlow mode="reset" onComplete={onForgotPinComplete} />
         ) : null}
 
         {(tab === 'fingerprint' || tab === 'face') && (
@@ -306,6 +425,21 @@ const styles = StyleSheet.create({
   pinContent: {
     alignItems: 'center',
     gap: 32,
+  },
+  forgotPinBtn: {
+    marginTop: 4,
+  },
+  forgotPinLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 12.5,
+    color: colors.heroTextMuted,
+    textDecorationLine: 'underline',
+  },
+  forgotPinInfo: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    color: colors.heroTextMuted,
+    textAlign: 'center',
   },
   biometricButton: {
     alignItems: 'center',

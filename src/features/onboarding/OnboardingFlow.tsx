@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { setPin } from '@/features/appLock/pin';
+import { hasPinConfigured, savePin } from '@/features/appLock/pin';
+import { markAppUnlocked } from '@/features/appLock/unlockSession';
 import type { AuthMode } from '@/features/auth/components/AuthModeToggle';
 import { AccountStepForm } from '@/features/onboarding/AccountStepForm';
 import { BiometricStepForm } from '@/features/onboarding/BiometricStepForm';
@@ -22,12 +23,12 @@ type StepMeta = {
 const STEP_META: Record<FlowStep, StepMeta> = {
   account: {
     title: 'Create your Paisa account',
-    subtitle: 'Your email and password recover the account.\nEverything else stays on this device.',
+    subtitle: 'Your email and password recover the account.\nYour app PIN syncs across devices.',
     rail: 'account',
   },
   'pin-create': {
     title: 'Set your app PIN',
-    subtitle: "Six digits. You'll need this every time you open Paisa.",
+    subtitle: "Six digits. You'll use this when you lock Paisa — same PIN on every device.",
     rail: 'pin',
   },
   'pin-confirm': {
@@ -88,6 +89,25 @@ export function OnboardingFlow({
     setInProgress(true);
   }
 
+  /**
+   * After register → always set up PIN (first-time account setup).
+   * After sign-in → enter the app if the account (or this device) already
+   * has a PIN; only prompt setup when the account has never configured one.
+   */
+  async function onAuthenticated(accountPinConfigured: boolean) {
+    if (authMode === 'signin') {
+      const localConfigured = await hasPinConfigured();
+      if (accountPinConfigured || localConfigured) {
+        useAppLockStore.getState().setHasPinConfigured(true);
+        markAppUnlocked();
+        setInProgress(false);
+        router.replace('/(tabs)');
+        return;
+      }
+    }
+    goToPinCreate();
+  }
+
   function onPinCreated(pin: string) {
     setPendingPin(pin);
     setPinError(null);
@@ -112,9 +132,19 @@ export function OnboardingFlow({
       return;
     }
 
-    await setPin(pin);
+    try {
+      await savePin(pin, { mode: 'create' });
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : 'Could not save your PIN. Try again.');
+      setPendingPin(null);
+      setPinFormKey((key) => key + 1);
+      setStep('pin-create');
+      return;
+    }
     setPendingPin(null);
     setHasPinConfigured(true);
+    // User just proved they know the PIN — keep this tab unlocked across refresh.
+    markAppUnlocked();
     setPinFormKey((key) => key + 1);
     setStep('biometrics');
   }
@@ -129,7 +159,7 @@ export function OnboardingFlow({
       subtitle={meta.subtitle}
     >
       {step === 'account' ? (
-        <AccountStepForm mode={authMode} onAuthenticated={goToPinCreate} />
+        <AccountStepForm mode={authMode} onAuthenticated={onAuthenticated} />
       ) : null}
 
       {step === 'pin-create' ? (

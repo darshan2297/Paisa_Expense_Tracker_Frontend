@@ -13,6 +13,7 @@ import { NetWorthHero } from '@/components/dashboard/NetWorthHero';
 import { SpendingForecastCard } from '@/components/dashboard/SpendingForecastCard';
 import { DesignGridLead } from '@/components/design/DesignGrid';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
 import { useLifeDashboard } from '@/features/dashboard/hooks';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { currentYearMonth } from '@/utils/date';
@@ -21,7 +22,8 @@ import { currentYearMonth } from '@/utils/date';
 export default function LifeDashboardScreen() {
   const [month, setMonth] = useState(currentYearMonth());
   const [alertDismissed, setAlertDismissed] = useState(false);
-  const { data } = useLifeDashboard();
+  const { data: dashboardData } = useLifeDashboard(month);
+  const data = dashboardData ?? emptyLifeDashboard(month);
   const { isMobile } = useResponsiveLayout();
   const showAlert = data.showBudgetAlert && !alertDismissed;
 
@@ -29,7 +31,6 @@ export default function LifeDashboardScreen() {
     <ScreenScaffold
       month={month}
       onMonthChange={setMonth}
-      onAddTransaction={() => router.push('/(tabs)/transactions')}
       headerExtra={
         showAlert ? (
           <BudgetAlertBanner

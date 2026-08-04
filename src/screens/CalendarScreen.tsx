@@ -5,8 +5,11 @@ import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
 import { DesignKpiCard, DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { Card } from '@/components/Card';
+import { useCalendar } from '@/features/calendar/hooks';
+import type { CalendarDay } from '@/features/calendar/types';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { compactINR, formatINR } from '@/utils/currency';
 import { currentYearMonth, formatShortDate } from '@/utils/date';
 
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -25,54 +28,31 @@ type DayCell = {
   blank?: boolean;
 };
 
-const DAY_SPEND: Record<string, { in?: number; out?: number; planned?: boolean }> = {
-  '2026-08-01': { in: 86000 },
-  '2026-08-02': { out: 486 },
-  '2026-08-03': { out: 5684 },
-  '2026-08-05': { out: 1450, planned: true },
-  '2026-08-06': { out: 3400 },
-  '2026-08-07': { out: 649 },
-  '2026-08-12': { out: 1400 },
-  '2026-08-22': { out: 1400 },
-  '2026-08-25': { out: 1600 },
-};
-
-const SEL_ITEMS = [
-  {
-    initial: 'G',
-    title: 'Groceries',
-    sub: 'Weekend run',
-    amount: '−₹1,450',
-    amountColor: colors.textPrimary,
-    bg: '#E5EEF8',
-    fg: '#3E6E9E',
-  },
-];
-
-const SEL_PLANNED = [{ label: 'Emergency fund contribution', kind: 'Goal', amount: '−₹12,000' }];
-
-const UPCOMING_PAY = [
-  { label: 'Emergency fund contribution', sub: 'Goal · in 3 days', amount: '₹12,000' },
-  { label: 'Japan trip 2027 contribution', sub: 'Goal · in 5 days', amount: '₹9,000' },
-  { label: 'Term plan premium', sub: 'Insurance · in 8 days', amount: '₹14,200' },
-  { label: 'Home loan EMI', sub: 'Planned EMI · in 12 days', amount: '₹18,400' },
-];
-
-const UPCOMING_IN = [
-  { label: 'Salary', sub: 'Expected · 1 Aug 2026', amount: '₹86,000' },
-  { label: 'Freelance retainer', sub: 'Freelance · 15 Aug 2026', amount: '₹2,350' },
-];
-
-function shortAmt(n: number): string {
-  if (n >= 100000) return `${(n / 100000).toFixed(1)}L`;
-  if (n >= 1000) return `${Math.round(n / 1000)}k`;
-  return String(n);
+function todayKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 /** Design HTML `isCalendar` — cash-flow calendar with day drill-down. */
 export default function CalendarScreen() {
   const [month, setMonth] = useState(currentYearMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const { data: calendar } = useCalendar(month);
+
+  const dayMap = useMemo(() => {
+    const map = new Map<string, CalendarDay>();
+    for (const day of calendar?.days ?? []) {
+      map.set(day.date, day);
+    }
+    return map;
+  }, [calendar?.days]);
+
+  const moneyIn = useMemo(
+    () => (calendar?.days ?? []).reduce((sum, d) => sum + Number(d.inflow), 0),
+    [calendar?.days],
+  );
+  const moneyOut = Number(calendar?.actual_total ?? 0);
+  const netFlow = Number(calendar?.net_flow ?? 0);
 
   const weeks = useMemo(() => {
     const [y, m] = month.split('-').map(Number);
@@ -83,7 +63,8 @@ export default function CalendarScreen() {
     for (let d = 1; d <= dim; d++) cells.push(d);
     while (cells.length % 7) cells.push(null);
 
-    const maxOut = Math.max(1, ...Object.values(DAY_SPEND).map((d) => d.out ?? 0));
+    const maxOut = Math.max(1, ...(calendar?.days ?? []).map((d) => Number(d.outflow)));
+    const today = todayKey();
 
     const rows: DayCell[][] = [];
     for (let i = 0; i < cells.length; i += 7) {
@@ -105,17 +86,17 @@ export default function CalendarScreen() {
             };
           }
           const key = `${month}-${String(d).padStart(2, '0')}`;
-          const data = DAY_SPEND[key];
-          const inc = data?.in ?? 0;
-          const out = data?.out ?? 0;
+          const data = dayMap.get(key);
+          const inc = Number(data?.inflow ?? 0);
+          const out = Number(data?.outflow ?? 0);
           const heat = out / maxOut;
-          const isToday = key === '2026-08-02';
+          const isToday = key === today;
           const selected = selectedDay === key;
           return {
             key,
             num: String(d),
-            inText: inc ? `+${shortAmt(inc)}` : '',
-            outText: out ? `−${shortAmt(out)}` : '',
+            inText: inc ? `+${compactINR(inc)}` : '',
+            outText: out ? `−${compactINR(out)}` : '',
             bg: selected
               ? '#F0EEFC'
               : out
@@ -131,7 +112,7 @@ export default function CalendarScreen() {
                 ? colors.textPrimary
                 : colors.borderSubtle,
             numColor: isToday ? colors.textPrimary : '#7C766D',
-            showDot: !!data?.planned,
+            showDot: (data?.planned.length ?? 0) > 0,
             selected,
             isToday,
           };
@@ -139,18 +120,66 @@ export default function CalendarScreen() {
       );
     }
     return rows;
-  }, [month, selectedDay]);
+  }, [month, selectedDay, dayMap, calendar?.days]);
 
+  const selectedData = selectedDay ? dayMap.get(selectedDay) : undefined;
   const selLabel = selectedDay ? formatShortDate(selectedDay) : 'Pick a day';
   const hasSel = !!selectedDay;
-  const selEmpty = hasSel && selectedDay !== '2026-08-05';
+  const selEmpty = hasSel && !selectedData?.actual.length && !selectedData?.planned.length;
+
+  const upcomingPay = useMemo(() => {
+    const today = todayKey();
+    const items: { label: string; sub: string; amount: string }[] = [];
+    for (const day of calendar?.days ?? []) {
+      if (day.date <= today) continue;
+      for (const p of day.planned) {
+        if (p.kind !== 'Goal' && p.kind !== 'Bill' && p.kind !== 'Insurance' && p.kind !== 'EMI') {
+          continue;
+        }
+        items.push({
+          label: p.label,
+          sub: `${p.kind} · ${formatShortDate(day.date)}`,
+          amount: formatINR(Number(p.amount)),
+        });
+      }
+    }
+    return items.slice(0, 6);
+  }, [calendar?.days]);
+
+  const upcomingIn = useMemo(() => {
+    const today = todayKey();
+    const items: { label: string; sub: string; amount: string }[] = [];
+    for (const day of calendar?.days ?? []) {
+      if (day.date <= today) continue;
+      for (const a of day.actual) {
+        if (a.type !== 'income') continue;
+        items.push({
+          label: a.title,
+          sub: `Expected · ${formatShortDate(day.date)}`,
+          amount: formatINR(Number(a.amount)),
+        });
+      }
+    }
+    for (const day of calendar?.days ?? []) {
+      if (day.date < today) continue;
+      const inflow = Number(day.inflow);
+      if (inflow > 0 && !day.actual.some((a) => a.type === 'income')) {
+        items.push({
+          label: 'Expected income',
+          sub: formatShortDate(day.date),
+          amount: formatINR(inflow),
+        });
+      }
+    }
+    return items.slice(0, 6);
+  }, [calendar?.days]);
 
   return (
     <ScreenScaffold month={month} onMonthChange={setMonth}>
       <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
         <DesignKpiCard
           label="Money in"
-          value="₹88,350"
+          value={formatINR(moneyIn)}
           valueColor={colors.successValue}
           backgroundColor="#E7F1EC"
           borderColor="#D8E8E0"
@@ -158,13 +187,16 @@ export default function CalendarScreen() {
         />
         <DesignKpiCard
           label="Money out"
-          value="₹85,749"
+          value={formatINR(moneyOut)}
           valueColor={colors.dangerValue}
           backgroundColor={colors.dangerTint}
           borderColor={colors.dangerTintBorder}
           labelColor={colors.dangerSubtext}
         />
-        <DesignKpiCard label="Net cash flow" value="+₹2,601" />
+        <DesignKpiCard
+          label="Net cash flow"
+          value={(netFlow >= 0 ? '+' : '−') + compactINR(Math.abs(netFlow))}
+        />
       </DesignGrid>
 
       <DesignGridLead
@@ -225,28 +257,52 @@ export default function CalendarScreen() {
                 <Text style={styles.emptyHint}>No money moved on this day.</Text>
               ) : (
                 <>
-                  {SEL_ITEMS.map((t) => (
-                    <View key={t.title} style={styles.listRow}>
-                      <View style={[styles.avatar, { backgroundColor: t.bg }]}>
-                        <Text style={[styles.avatarText, { color: t.fg }]}>{t.initial}</Text>
+                  {selectedData?.actual.map((t) => (
+                    <View key={t.id} style={styles.listRow}>
+                      <View
+                        style={[
+                          styles.avatar,
+                          {
+                            backgroundColor: t.type === 'income' ? '#E7F1EC' : '#E5EEF8',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.avatarText,
+                            { color: t.type === 'income' ? '#2F7D5D' : '#3E6E9E' },
+                          ]}
+                        >
+                          {t.title.charAt(0).toUpperCase()}
+                        </Text>
                       </View>
                       <View style={styles.listCopy}>
                         <Text style={styles.listTitle}>{t.title}</Text>
-                        <Text style={styles.listSub}>{t.sub}</Text>
+                        <Text style={styles.listSub}>{t.type}</Text>
                       </View>
-                      <Text style={[styles.listAmount, moneyTextStyle, { color: t.amountColor }]}>
-                        {t.amount}
+                      <Text
+                        style={[
+                          styles.listAmount,
+                          moneyTextStyle,
+                          {
+                            color: t.type === 'income' ? colors.successValue : colors.textPrimary,
+                          },
+                        ]}
+                      >
+                        {(t.type === 'income' ? '+' : '−') + formatINR(Number(t.amount))}
                       </Text>
                     </View>
                   ))}
-                  {SEL_PLANNED.map((p) => (
+                  {selectedData?.planned.map((p) => (
                     <View key={p.label} style={styles.plannedRow}>
                       <View style={styles.plannedDot} />
                       <View style={styles.listCopy}>
                         <Text style={styles.listTitle}>{p.label}</Text>
                         <Text style={styles.listSub}>{p.kind} · scheduled</Text>
                       </View>
-                      <Text style={[styles.plannedAmount, moneyTextStyle]}>{p.amount}</Text>
+                      <Text style={[styles.plannedAmount, moneyTextStyle]}>
+                        −{formatINR(Number(p.amount))}
+                      </Text>
                     </View>
                   ))}
                 </>
@@ -255,32 +311,42 @@ export default function CalendarScreen() {
 
             <Card size="large" style={styles.sideCard}>
               <DesignSectionHeader title="Upcoming payments" />
-              {UPCOMING_PAY.map((u) => (
-                <View key={u.label} style={styles.listRow}>
-                  <View style={[styles.plannedDot, { backgroundColor: '#E08A70' }]} />
-                  <View style={styles.listCopy}>
-                    <Text style={styles.listTitle}>{u.label}</Text>
-                    <Text style={styles.listSub}>{u.sub}</Text>
+              {upcomingPay.length === 0 ? (
+                <Text style={styles.emptyHint}>No upcoming payments this month.</Text>
+              ) : (
+                upcomingPay.map((u) => (
+                  <View key={`${u.label}-${u.sub}`} style={styles.listRow}>
+                    <View style={[styles.plannedDot, { backgroundColor: '#E08A70' }]} />
+                    <View style={styles.listCopy}>
+                      <Text style={styles.listTitle}>{u.label}</Text>
+                      <Text style={styles.listSub}>{u.sub}</Text>
+                    </View>
+                    <Text style={[styles.listAmount, moneyTextStyle]}>{u.amount}</Text>
                   </View>
-                  <Text style={[styles.listAmount, moneyTextStyle]}>{u.amount}</Text>
-                </View>
-              ))}
+                ))
+              )}
             </Card>
 
             <Card size="large" style={styles.sideCard}>
               <DesignSectionHeader title="Upcoming income" />
-              {UPCOMING_IN.map((u) => (
-                <View key={u.label} style={styles.listRow}>
-                  <View style={[styles.plannedDot, { backgroundColor: '#7FA87C' }]} />
-                  <View style={styles.listCopy}>
-                    <Text style={styles.listTitle}>{u.label}</Text>
-                    <Text style={styles.listSub}>{u.sub}</Text>
+              {upcomingIn.length === 0 ? (
+                <Text style={styles.emptyHint}>No upcoming income this month.</Text>
+              ) : (
+                upcomingIn.map((u) => (
+                  <View key={`${u.label}-${u.sub}`} style={styles.listRow}>
+                    <View style={[styles.plannedDot, { backgroundColor: '#7FA87C' }]} />
+                    <View style={styles.listCopy}>
+                      <Text style={styles.listTitle}>{u.label}</Text>
+                      <Text style={styles.listSub}>{u.sub}</Text>
+                    </View>
+                    <Text
+                      style={[styles.listAmount, moneyTextStyle, { color: colors.successValue }]}
+                    >
+                      {u.amount}
+                    </Text>
                   </View>
-                  <Text style={[styles.listAmount, moneyTextStyle, { color: colors.successValue }]}>
-                    {u.amount}
-                  </Text>
-                </View>
-              ))}
+                ))
+              )}
             </Card>
           </View>
         }

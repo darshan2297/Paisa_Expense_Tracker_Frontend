@@ -16,6 +16,8 @@ export type Transaction = {
   note: string | null;
   category: Category;
   created_at: string;
+  has_receipt?: boolean;
+  receipt_url?: string | null;
 };
 
 export type TransactionListResponse = {

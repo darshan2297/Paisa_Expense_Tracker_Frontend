@@ -1,109 +1,36 @@
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { DesignKpiCard, DesignSectionHeader } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { Card } from '@/components/Card';
+import { useTrends } from '@/features/insights/hooks';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth, formatYearMonthLabel } from '@/utils/date';
-
-const MONTHS6 = [
-  { label: 'Mar', incomeH: 110, expenseH: 96 },
-  { label: 'Apr', incomeH: 116, expenseH: 104 },
-  { label: 'May', incomeH: 120, expenseH: 100 },
-  { label: 'Jun', incomeH: 114, expenseH: 108 },
-  { label: 'Jul', incomeH: 124, expenseH: 112 },
-  { label: 'Aug', incomeH: 130, expenseH: 126 },
-];
-
-const INSIGHT_CARDS = [
-  {
-    label: 'Highest spending week',
-    value: '₹28,400',
-    sub: 'Week 3 of Aug',
-    color: colors.danger,
-  },
-  {
-    label: 'Highest spending day',
-    value: '₹18,650',
-    sub: 'Fridays, added up',
-    color: '#96702C',
-  },
-  {
-    label: 'Largest transaction',
-    value: '₹36,000',
-    sub: 'Rent · 1 Aug 2026',
-    color: colors.accent,
-  },
-  {
-    label: 'Month over month',
-    value: '+12%',
-    sub: 'Spending vs July',
-    color: colors.dangerValue,
-  },
-  {
-    label: 'Savings trend',
-    value: '3%',
-    sub: '6-month average 8%',
-    color: colors.success,
-  },
-  {
-    label: 'Investment growth',
-    value: '+₹1.2 L',
-    sub: 'On ₹10.6 L invested',
-    color: '#2F7D6E',
-  },
-];
-
-const TRENDS = [
-  {
-    name: 'Rent',
-    prev: '₹36,000',
-    now: '₹36,000',
-    delta: '0%',
-    color: '#A2701F',
-    deltaColor: colors.textCaption,
-  },
-  {
-    name: 'Groceries',
-    prev: '₹4,200',
-    now: '₹6,850',
-    delta: '+63%',
-    color: '#2F7D6E',
-    deltaColor: colors.dangerValue,
-  },
-  {
-    name: 'Food & Dining',
-    prev: '₹3,100',
-    now: '₹5,420',
-    delta: '+75%',
-    color: colors.danger,
-    deltaColor: colors.dangerValue,
-  },
-  {
-    name: 'Transport',
-    prev: '₹2,800',
-    now: '₹3,650',
-    delta: '+30%',
-    color: colors.accent,
-    deltaColor: colors.dangerValue,
-  },
-  {
-    name: 'Shopping',
-    prev: '₹6,200',
-    now: '₹4,100',
-    delta: '−34%',
-    color: '#A84A7C',
-    deltaColor: colors.successValue,
-  },
-];
+import { formatINR } from '@/utils/currency';
 
 /** Design HTML `isInsights` — spending patterns and trends. */
 export default function InsightsScreen() {
   const [month, setMonth] = useState(currentYearMonth());
+  const { data: trends } = useTrends(6);
+
+  const chartMonths = useMemo(() => {
+    const months = trends?.months ?? [];
+    const maxVal = Math.max(1, ...months.flatMap((m) => [Number(m.income), Number(m.expense)]));
+    return months.map((m) => ({
+      label: m.label,
+      incomeH: Math.round((Number(m.income) / maxVal) * 130),
+      expenseH: Math.round((Number(m.expense) / maxVal) * 130),
+    }));
+  }, [trends?.months]);
+
+  const latestMonth = trends?.months?.[trends.months.length - 1];
+  const avgDailySpend = latestMonth ? formatINR(Number(latestMonth.expense) / 30) : '—';
+  const savingsInsight = trends?.insights.find((i) => i.label === 'Savings trend');
+  const momInsight = trends?.insights.find((i) => i.label === 'Month over month');
 
   return (
     <ScreenScaffold month={month} onMonthChange={setMonth}>
@@ -121,64 +48,73 @@ export default function InsightsScreen() {
             </View>
           </View>
         </View>
-        <View style={styles.barChart}>
-          {MONTHS6.map((m) => (
-            <View key={m.label} style={styles.barGroup}>
-              <View style={styles.barPair}>
-                <View style={[styles.bar, styles.barIncome, { height: m.incomeH }]} />
-                <View style={[styles.bar, styles.barExpense, { height: m.expenseH }]} />
+        {chartMonths.length === 0 ? (
+          <Text style={styles.emptyHint}>No trend data yet.</Text>
+        ) : (
+          <View style={styles.barChart}>
+            {chartMonths.map((m) => (
+              <View key={m.label} style={styles.barGroup}>
+                <View style={styles.barPair}>
+                  <View style={[styles.bar, styles.barIncome, { height: m.incomeH }]} />
+                  <View style={[styles.bar, styles.barExpense, { height: m.expenseH }]} />
+                </View>
+                <Text style={styles.barLabel}>{m.label}</Text>
               </View>
-              <Text style={styles.barLabel}>{m.label}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </Card>
 
       <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
         <DesignKpiCard
           label="Average daily spend"
-          value="₹2,766"
+          value={avgDailySpend}
           sub={formatYearMonthLabel(month)}
         />
         <DesignKpiCard
-          label="Biggest expense"
-          value="₹36,000"
-          sub="Rent · monthly"
+          label="Latest month expense"
+          value={latestMonth ? formatINR(Number(latestMonth.expense)) : '—'}
+          sub={latestMonth?.label ?? 'No data'}
           valueColor={colors.dangerValue}
         />
         <DesignKpiCard
           label="Savings rate"
-          value="3%"
-          sub="₹2,601 saved this month"
+          value={savingsInsight?.value ?? '—'}
+          sub={savingsInsight?.sub ?? 'This month'}
           valueColor={colors.successValue}
         />
       </DesignGrid>
 
-      <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
-        {INSIGHT_CARDS.map((i) => (
-          <DesignKpiCard
-            key={i.label}
-            label={i.label}
-            value={i.value}
-            sub={i.sub}
-            valueColor={i.color}
-          />
-        ))}
-      </DesignGrid>
+      {(trends?.insights.length ?? 0) > 0 ? (
+        <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
+          {trends!.insights.map((i) => (
+            <DesignKpiCard
+              key={i.label}
+              label={i.label}
+              value={i.value}
+              sub={i.sub}
+              valueColor={
+                i.label === 'Month over month' && i.value.startsWith('+')
+                  ? colors.dangerValue
+                  : colors.textPrimary
+              }
+            />
+          ))}
+        </DesignGrid>
+      ) : null}
 
-      <Card size="large" style={styles.trendCard}>
-        <DesignSectionHeader title="Category trend vs last month" />
-        {TRENDS.map((t) => (
-          <View key={t.name} style={styles.trendRow}>
-            <View style={[styles.catDot, { backgroundColor: t.color }]} />
-            <Text style={styles.trendName}>{t.name}</Text>
-            <Text style={styles.trendPrev}>{t.prev}</Text>
+      {momInsight ? (
+        <Card size="large" style={styles.trendCard}>
+          <DesignSectionHeader title="Spending trend" />
+          <View style={styles.trendRow}>
+            <View style={[styles.catDot, { backgroundColor: colors.accent }]} />
+            <Text style={styles.trendName}>Month over month</Text>
+            <Text style={styles.trendPrev}>{momInsight.sub}</Text>
             <Feather name="arrow-right" size={14} color="#CFC8BE" />
-            <Text style={[styles.trendNow, moneyTextStyle]}>{t.now}</Text>
-            <Text style={[styles.trendDelta, { color: t.deltaColor }]}>{t.delta}</Text>
+            <Text style={[styles.trendNow, moneyTextStyle]}>{momInsight.value}</Text>
           </View>
-        ))}
-      </Card>
+        </Card>
+      ) : null}
     </ScreenScaffold>
   );
 }
@@ -190,6 +126,13 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   legendDot: { width: 9, height: 9, borderRadius: 3 },
   legendText: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.textLabel },
+  emptyHint: {
+    paddingVertical: 40,
+    textAlign: 'center',
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    color: colors.textCaption,
+  },
   barChart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -238,5 +181,4 @@ const styles = StyleSheet.create({
   trendName: { flex: 1, fontFamily: fontFamily.bold, fontSize: 13, color: colors.textPrimary },
   trendPrev: { fontFamily: fontFamily.medium, fontSize: 12.5, color: colors.textCaption },
   trendNow: { fontFamily: fontFamily.extrabold, fontSize: 13.5, color: colors.textPrimary },
-  trendDelta: { fontFamily: fontFamily.extrabold, fontSize: 12, width: 60, textAlign: 'right' },
 });

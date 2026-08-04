@@ -5,29 +5,36 @@ import { Keypad } from '@/components/Keypad';
 import { PinDots } from '@/components/PinDots';
 import { colors } from '@/theme/colors';
 import { fontFamily, fontSize } from '@/theme/typography';
+import { getApiErrorMessage } from '@/utils/errors';
 
-import { setPin } from './pin';
+import { savePin } from './pin';
 
 const PIN_LENGTH = 6;
 
 export type PinSetupFlowProps = {
-  /** Called after the PIN is chosen, confirmed, and persisted. */
+  /** Called after the PIN is chosen, confirmed, and persisted (account + device). */
   onComplete: () => void;
+  /**
+   * `create` — first-time account PIN.
+   * `change` — replace after verifying current PIN (`currentPin` required).
+   * `reset` — Forgot PIN after password re-auth (no current PIN needed).
+   */
+  mode?: 'create' | 'change' | 'reset';
+  /** Required when `mode` is `change` — the PIN the user just verified. */
+  currentPin?: string;
 };
 
 /**
  * Two-step PIN setup: enter a new PIN, then confirm it. Shared between the
- * mandatory onboarding flow (app/onboarding/pin.tsx, right after
- * register/login) and the settings-triggered change flow (Profile's "Lock
- * the app" -> app/lock-setup.tsx) - only what happens on success differs
- * between them, hence the `onComplete` callback rather than each screen
- * duplicating this logic.
+ * mandatory onboarding flow, Profile → Change PIN / lock-setup, and Forgot PIN.
  */
-export function PinSetupFlow({ onComplete }: PinSetupFlowProps) {
+export function PinSetupFlow({ onComplete, mode = 'create', currentPin }: PinSetupFlowProps) {
   const [step, setStep] = useState<'create' | 'confirm'>('create');
   const [firstPin, setFirstPin] = useState('');
   const [pin, setPinInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const changing = mode === 'change';
+  const resetting = mode === 'reset';
 
   function onDigit(digit: string) {
     const next = (pin + digit).slice(0, PIN_LENGTH);
@@ -44,7 +51,17 @@ export function PinSetupFlow({ onComplete }: PinSetupFlowProps) {
     }
 
     if (next === firstPin) {
-      setPin(next).then(onComplete);
+      savePin(next, {
+        mode: changing ? 'change' : resetting ? 'reset' : 'create',
+        currentPin: changing ? currentPin : undefined,
+      })
+        .then(onComplete)
+        .catch((err: unknown) => {
+          setError(getApiErrorMessage(err, "Couldn't save your PIN. Please try again."));
+          setFirstPin('');
+          setPinInput('');
+          setStep('create');
+        });
     } else {
       setError('PINs did not match. Start again.');
       setFirstPin('');
@@ -60,11 +77,17 @@ export function PinSetupFlow({ onComplete }: PinSetupFlowProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
-        {step === 'create' ? 'Set your app PIN' : 'Confirm your PIN'}
+        {step === 'create'
+          ? changing || resetting
+            ? 'Choose a new PIN'
+            : 'Set your app PIN'
+          : 'Confirm your PIN'}
       </Text>
       <Text style={styles.subtitle}>
         {step === 'create'
-          ? "Six digits. You'll need this every time you open Paisa."
+          ? changing || resetting
+            ? 'Six digits. This updates your Paisa PIN on every device.'
+            : "Six digits. You'll use this when you lock Paisa — same PIN on every device."
           : 'Type the same six digits once more.'}
       </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}

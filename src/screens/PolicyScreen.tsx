@@ -1,21 +1,55 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { DesignKpiCard } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { POLICY_KINDS } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalChips,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalSave,
+  ModalTextField,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import {
+  useCreatePolicy,
+  useDeletePolicy,
+  usePolicies,
+  usePoliciesSummary,
+  useTogglePolicyPremiumPaid,
+} from '@/features/policies/hooks';
+import { getApiErrorMessage } from '@/utils/errors';
 import { compact, fmt } from '@/mock/format';
-import { MOCK_POLICIES } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth, formatShortDate } from '@/utils/date';
 
-const TODAY = '2026-08-02';
 const LEAD_DAYS = 15;
+
+const POLICY_COLORS: Record<string, [string, string]> = {
+  TERM: ['#EDE9FE', '#5B54D6'],
+  HLTH: ['#E2F0E9', '#2F7D5D'],
+  MOTOR: ['#E5EEF8', '#3E6E9E'],
+  ACC: ['#FAEED8', '#96702C'],
+  HOME: ['#F9E7E1', '#C2543D'],
+};
+
+const POLICY_TAGS: Record<string, string> = {
+  TERM: 'TERM',
+  HLTH: 'HLTH',
+  MOTOR: 'MTR',
+  ACC: 'ACC',
+  HOME: 'HSG',
+};
 
 function dayDiff(a: string, b: string): number {
   return Math.round(
@@ -23,32 +57,59 @@ function dayDiff(a: string, b: string): number {
   );
 }
 
+function formatFrequency(freq: string): string {
+  return freq.charAt(0).toUpperCase() + freq.slice(1);
+}
+
 /** Design HTML `isPolicy` — cover hero, premiums, policy cards. */
 export default function PolicyScreen() {
   const [month, setMonth] = useState(currentYearMonth());
+  const { data: policiesData } = usePolicies();
+  const { data: summary } = usePoliciesSummary();
+  const [addOpen, setAddOpen] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const deletePolicy = useDeletePolicy();
+  const togglePremiumPaid = useTogglePolicyPremiumPaid();
+
+  function confirmDeletePolicy(policyId: string) {
+    Alert.alert('Delete this policy?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deletePolicy.mutate(policyId) },
+    ]);
+  }
+
+  const policiesList = policiesData ?? summary?.policies ?? [];
 
   const stats = useMemo(() => {
-    const cover = MOCK_POLICIES.filter((p) => ['TERM', 'HLTH', 'ACC'].includes(p.kind)).reduce(
-      (a, p) => a + p.cover,
-      0,
-    );
-    const premiumYear = MOCK_POLICIES.reduce((a, p) => a + p.premium, 0);
-    const sorted = [...MOCK_POLICIES].sort((a, b) => a.due.localeCompare(b.due));
-    const nextPol = sorted[0];
-    return { cover, premiumYear, nextPol };
-  }, []);
+    const cover = summary
+      ? Number(summary.total_cover)
+      : policiesList.reduce((a, p) => a + Number(p.cover_amount), 0);
+    const premiumYear = summary
+      ? Number(summary.annual_premium)
+      : policiesList.reduce((a, p) => a + Number(p.premium), 0);
+    const sorted = [...policiesList].sort((a, b) => a.renewal_date.localeCompare(b.renewal_date));
+    const nextPol = summary?.next_renewal ?? sorted[0] ?? null;
+    return { cover, premiumYear, nextPol, count: summary?.policy_count ?? policiesList.length };
+  }, [policiesList, summary]);
 
   const policies = useMemo(
     () =>
-      [...MOCK_POLICIES]
-        .sort((a, b) => a.due.localeCompare(b.due))
+      [...policiesList]
+        .sort((a, b) => a.renewal_date.localeCompare(b.renewal_date))
         .map((p) => {
-          const dd = dayDiff(p.due, TODAY);
+          const dd = dayDiff(p.renewal_date, today);
+          const [bg, fg] = POLICY_COLORS[p.kind] ?? ['#EDE9FE', '#5B54D6'];
           return {
-            ...p,
-            cover: compact(p.cover),
-            premium: fmt(p.premium),
-            dueDate: formatShortDate(p.due),
+            id: p.id,
+            name: p.name,
+            provider: p.provider,
+            tag: POLICY_TAGS[p.kind] ?? p.kind,
+            bg,
+            fg,
+            cover: compact(Number(p.cover_amount)),
+            premium: fmt(Number(p.premium)),
+            freq: formatFrequency(p.frequency),
+            dueDate: formatShortDate(p.renewal_date),
             dueChip:
               dd < 0
                 ? `${Math.abs(dd)}d overdue`
@@ -59,9 +120,10 @@ export default function PolicyScreen() {
                     : 'Active',
             dueBg: dd < 0 ? '#F9E7E1' : dd <= LEAD_DAYS ? '#FAEED8' : '#E2F0E9',
             dueFg: dd < 0 ? colors.dangerValue : dd <= LEAD_DAYS ? '#96702C' : colors.success,
+            premiumPaid: p.premium_paid,
           };
         }),
-    [],
+    [policiesList, today],
   );
 
   return (
@@ -75,9 +137,7 @@ export default function PolicyScreen() {
         >
           <Text style={styles.coverEyebrow}>Total life & health cover</Text>
           <Text style={[styles.coverValue, moneyTextStyle]}>{compact(stats.cover)}</Text>
-          <Text style={styles.coverNote}>
-            {MOCK_POLICIES.length} policies · life, health and accident
-          </Text>
+          <Text style={styles.coverNote}>{stats.count} policies · life, health and accident</Text>
         </LinearGradient>
 
         <DesignKpiCard
@@ -87,14 +147,14 @@ export default function PolicyScreen() {
         />
         <DesignKpiCard
           label="Next renewal"
-          value={stats.nextPol ? formatShortDate(stats.nextPol.due) : '—'}
+          value={stats.nextPol ? formatShortDate(stats.nextPol.renewal_date) : '—'}
           sub={stats.nextPol ? stats.nextPol.name : 'Add a policy to track renewals'}
         />
       </DesignGrid>
 
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Your policies</Text>
-        <Pressable style={styles.darkBtn}>
+        <Pressable style={styles.darkBtn} onPress={() => setAddOpen(true)}>
           <Feather name="plus" size={14} color={colors.surface} />
           <Text style={styles.darkBtnLabel}>Add policy</Text>
         </Pressable>
@@ -129,14 +189,124 @@ export default function PolicyScreen() {
             </View>
             <View style={styles.policyFooter}>
               <Text style={styles.dueDate}>Due {p.dueDate}</Text>
-              <Pressable style={styles.payBtn}>
-                <Text style={styles.payBtnLabel}>Mark premium paid</Text>
+              <Pressable
+                style={[styles.payBtn, p.premiumPaid && styles.payBtnPaid]}
+                disabled={togglePremiumPaid.isPending}
+                onPress={() => togglePremiumPaid.mutate(p.id)}
+              >
+                <Text style={[styles.payBtnLabel, p.premiumPaid && styles.payBtnLabelPaid]}>
+                  {p.premiumPaid ? 'Paid' : 'Mark premium paid'}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Delete policy"
+                hitSlop={8}
+                onPress={() => confirmDeletePolicy(p.id)}
+              >
+                <Feather name="trash-2" size={15} color={colors.textCaption} />
               </Pressable>
             </View>
           </Card>
         ))}
       </DesignGrid>
+
+      <AddPolicySheet visible={addOpen} onClose={() => setAddOpen(false)} />
     </ScreenScaffold>
+  );
+}
+
+/** Mockup `policy` modal — "Add policy". */
+function AddPolicySheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const createPolicy = useCreatePolicy();
+  const [premium, setPremium] = useState('');
+  const [name, setName] = useState('');
+  const [provider, setProvider] = useState('');
+  const [kind, setKind] = useState('TERM');
+  const [cover, setCover] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function close() {
+    setPremium('');
+    setName('');
+    setProvider('');
+    setKind('TERM');
+    setCover('');
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setError('');
+    onClose();
+  }
+
+  function submit() {
+    if (!premium || Number(premium) <= 0) {
+      setError('Enter the premium amount.');
+      return;
+    }
+    if (!name.trim() || !provider.trim()) {
+      setError('Add the policy name and insurer.');
+      return;
+    }
+    if (!cover || Number(cover) <= 0) {
+      setError('Enter the sum assured.');
+      return;
+    }
+    createPolicy.mutate(
+      {
+        name: name.trim(),
+        provider: provider.trim(),
+        kind,
+        cover_amount: cover.trim(),
+        premium: premium.trim(),
+        frequency: 'yearly',
+        renewal_date: date,
+        note: note.trim() || undefined,
+      },
+      {
+        onSuccess: close,
+        onError: (error) =>
+          setError(getApiErrorMessage(error, 'Could not save that policy. Try again.')),
+      },
+    );
+  }
+
+  return (
+    <Sheet visible={visible} onClose={close} variant="center">
+      <ModalHeader title="Add policy" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="Premium amount" value={premium} onChangeText={setPremium} />
+        <ModalTextField
+          label="Policy name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Term plan"
+        />
+        <ModalTextField
+          label="Insurer"
+          value={provider}
+          onChangeText={setProvider}
+          placeholder="e.g. HDFC Life"
+        />
+        <ModalChips label="Policy type" options={POLICY_KINDS} value={kind} onChange={setKind} />
+        <ModalTextField
+          label="Sum assured"
+          value={cover}
+          onChangeText={setCover}
+          placeholder="0"
+          numeric
+        />
+        <ModalDateNoteRow
+          dateLabel="Next renewal date"
+          date={date}
+          onDate={setDate}
+          note={note}
+          onNote={setNote}
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save" onPress={submit} loading={createPolicy.isPending} />
+      </ModalBody>
+    </Sheet>
   );
 }
 
@@ -257,4 +427,31 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: colors.surface,
   },
+  payBtnPaid: {
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  payBtnLabelPaid: {
+    color: colors.success,
+  },
+  sheetTitle: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 18,
+    color: colors.textPrimary,
+    marginBottom: 16,
+  },
+  sheetForm: { gap: 12 },
+  sheetInput: {
+    height: 46,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceSubtle,
+    fontFamily: fontFamily.semibold,
+    fontSize: 13.5,
+    color: colors.textPrimary,
+  },
+  saveBtn: { width: '100%', height: 50, borderRadius: 15 },
 });

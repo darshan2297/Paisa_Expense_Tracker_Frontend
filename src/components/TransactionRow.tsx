@@ -57,6 +57,14 @@ export function TransactionRow({ transaction, onDelete, size = 'sm' }: Transacti
           {sub}
         </Text>
       </View>
+      {transaction.has_receipt ? (
+        <Feather
+          name="paperclip"
+          size={13}
+          color={colors.textCaption}
+          accessibilityLabel="Has receipt"
+        />
+      ) : null}
       <Text
         style={[
           styles.amount,

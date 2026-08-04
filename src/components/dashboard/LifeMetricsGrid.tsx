@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
-import type { LifeMetric } from '@/mock/dashboard';
+import type { LifeMetric } from '@/features/dashboard/types';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';

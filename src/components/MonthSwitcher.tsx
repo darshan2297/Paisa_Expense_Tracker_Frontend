@@ -58,16 +58,17 @@ const styles = StyleSheet.create({
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.tileSmall - 4,
+    borderRadius: radius.filterChip,
   },
   buttonPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: colors.divider,
   },
   label: {
     fontFamily: fontFamily.bold,
     fontSize: 13,
+    letterSpacing: -0.195,
     color: colors.textPrimary,
-    minWidth: 116,
+    minWidth: 108,
     textAlign: 'center',
   },
 });

@@ -18,6 +18,12 @@ export const radius = {
   card: 20,
   /** Larger card corner radius (hero/feature cards). */
   cardLarge: 24,
+  /** Centered modal / bottom sheet corner radius (mockup `sheetRadius`). */
+  modal: 26,
+  /** Primary modal CTA (Save transaction, etc.). */
+  cta: 15,
+  /** Filter chip inner radius. */
+  filterChip: 10,
   /** Recessed nested sub-tile (inside a hero/card), e.g. forecast mini-stats. */
   tileSmall: 14,
   /** Icon chip / squircle avatar corner radius. */
