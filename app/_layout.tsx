@@ -54,7 +54,7 @@ function AppThemeProvider({ children }: PropsWithChildren) {
 function useAuthGuard() {
   const segments = useSegments();
   const router = useRouter();
-  const tabSegment = segments.length > 1 ? segments[1] : undefined;
+  const tabSegment = (segments as readonly string[])[1];
   const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
   const isSessionHydrating = useSessionStore((state) => state.isHydrating);
   const registrationOpen = useSessionStore((state) => state.registrationOpen);

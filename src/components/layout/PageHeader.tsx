@@ -23,7 +23,7 @@ type PageHeaderProps = {
 
 export function PageHeader({ month, onMonthChange, onAddTransaction }: PageHeaderProps) {
   const segments = useSegments();
-  const tabSegment = segments.length > 1 ? segments[1] : undefined;
+  const tabSegment = (segments as readonly string[])[1];
   const meta = pageMetaForSegment(tabSegment);
   const { isMobile, isDesktopWeb } = useResponsiveLayout();
   const { data: dashboardData } = useLifeDashboard(month);

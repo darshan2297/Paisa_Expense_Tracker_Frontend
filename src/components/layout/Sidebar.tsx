@@ -63,7 +63,7 @@ function NavButton({
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const segments = useSegments();
-  const tabSegment = segments.length > 1 ? segments[1] : undefined;
+  const tabSegment = (segments as readonly string[])[1];
   const activeId = activeNavIdFromSegment(tabSegment);
   const { data: dashboardData } = useLifeDashboard();
   const data = dashboardData ?? emptyLifeDashboard('');
