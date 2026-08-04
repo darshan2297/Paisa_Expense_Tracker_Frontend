@@ -57,7 +57,8 @@ export function reformatEmbeddedINR(text: string, compact = false): string {
       const magnitude = Number(num);
       if (!Number.isFinite(magnitude)) return `${sign}₹${num}`;
       const value = sign === '-' || sign === '−' ? -magnitude : magnitude;
-      return compact ? compactINR(value) : formatINR(value);
+      const formatted = compact ? compactINR(value) : formatINR(value);
+      return sign === '+' ? `+${formatted}` : formatted;
     },
   );
 }
