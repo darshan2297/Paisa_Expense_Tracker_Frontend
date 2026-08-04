@@ -63,6 +63,17 @@ const SCROLLBAR_CSS = `
   .paisa-date-input::-webkit-calendar-picker-indicator:hover {
     opacity: 1;
   }
+  /* Tabular nums for money — do NOT use RN fontVariant (paints amount boxes) */
+  input, textarea {
+    outline: none;
+  }
+  input[inputmode="decimal"],
+  input[inputmode="numeric"] {
+    border: none;
+    outline: none;
+    box-shadow: none;
+    -moz-appearance: textfield;
+  }
 `;
 
 const STYLE_ID = 'paisa-scrollbar-styles';

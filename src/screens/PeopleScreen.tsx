@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid } from '@/components/design/DesignGrid';
@@ -28,6 +28,7 @@ import type { LedgerEntry } from '@/features/ledger/types';
 import { fmt, initials } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth } from '@/utils/date';
 
 type LedgerDir = 'lent' | 'received' | 'borrowed' | 'repaid';
@@ -93,10 +94,9 @@ export default function PeopleScreen() {
   const createEntry = useCreateLedgerEntry();
 
   function confirmDeleteEntry(entryId: string) {
-    Alert.alert('Delete this entry?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteEntry.mutate(entryId) },
-    ]);
+    confirmDestructive('Delete this entry?', 'This cannot be undone.', () =>
+      deleteEntry.mutate(entryId),
+    );
   }
 
   const people = useMemo(() => {

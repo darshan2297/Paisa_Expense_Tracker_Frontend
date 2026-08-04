@@ -3,7 +3,6 @@ import { createElement, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
@@ -43,6 +42,7 @@ import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { formatINR } from '@/utils/currency';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth, formatYearMonthLabel } from '@/utils/date';
 
 /** Mockup `budgetPresets` / `leadOptions`. */
@@ -145,14 +145,9 @@ export default function PlannedScreen() {
   const deleteFixedCommitment = useDeleteFixedCommitment(month);
 
   function confirmDeleteFixedCommitment(commitmentId: string) {
-    Alert.alert('Delete this commitment?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteFixedCommitment.mutate(commitmentId),
-      },
-    ]);
+    confirmDestructive('Delete this commitment?', 'This cannot be undone.', () =>
+      deleteFixedCommitment.mutate(commitmentId),
+    );
   }
 
   const { watch, setValue, reset } = useForm<BudgetFormValues>({
@@ -267,7 +262,11 @@ export default function PlannedScreen() {
           inputMode="numeric"
           placeholder="0"
           placeholderTextColor={colors.textCaption}
-          style={[styles.amountInput, moneyTextStyle]}
+          style={[
+            styles.amountInput,
+            moneyTextStyle,
+            Platform.OS === 'web' ? ({ outlineStyle: 'none', borderWidth: 0 } as object) : null,
+          ]}
         />
       </View>
       <View style={styles.presetRow}>

@@ -35,6 +35,7 @@ import { useTransactionsSummary } from '@/features/transactions/hooks';
 import { compact, fmt, pctWidth } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
 
@@ -177,7 +178,7 @@ export default function CardsScreen() {
   }, [summary.data]);
 
   function removeCard(id: string) {
-    deleteCard.mutate(id);
+    confirmDestructive('Delete this card?', 'This cannot be undone.', () => deleteCard.mutate(id));
   }
 
   return (
@@ -635,7 +636,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 2.2,
     color: colors.heroText,
-    fontVariant: ['tabular-nums'],
   },
   cardNetwork: {
     fontFamily: fontFamily.semibold,

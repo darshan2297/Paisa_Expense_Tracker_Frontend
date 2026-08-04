@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
@@ -14,6 +14,7 @@ import { useLifeDashboard } from '@/features/dashboard/hooks';
 import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
 import { useGoalsSummary } from '@/features/goals/hooks';
 import { useProfile, useUpdateProfile } from '@/features/profile/hooks';
+import type { ProfileUpdatePayload } from '@/features/profile/types';
 import { useTransactionsSummary } from '@/features/transactions/hooks';
 import { useAppLockStore } from '@/stores/appLockStore';
 import { colors } from '@/theme/colors';
@@ -21,6 +22,9 @@ import { radius } from '@/theme/spacing';
 import { fontFamily } from '@/theme/typography';
 import { compactINR, formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
+import { getApiErrorMessage } from '@/utils/errors';
+
+type DetailKey = 'name' | 'phone' | 'city' | 'occupation';
 
 /** Design HTML `isProfile` — Profile & Settings. */
 export default function ProfileScreen() {
@@ -32,6 +36,9 @@ export default function ProfileScreen() {
   const dashboard = useLifeDashboard(month);
   const summary = useTransactionsSummary(month);
   const goalsSummary = useGoalsSummary();
+  // Drafts overlay server values while editing — avoids setState-in-effect sync.
+  const [drafts, setDrafts] = useState<Partial<Record<DetailKey, string>>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const dash = dashboard.data ?? emptyLifeDashboard(month);
   const savedThisMonth = Number(summary.data?.net_balance ?? 0);
@@ -46,6 +53,53 @@ export default function ProfileScreen() {
     .slice(0, 2)
     .join('')
     .toUpperCase();
+
+  function fieldValue(key: DetailKey): string {
+    if (drafts[key] !== undefined) return drafts[key]!;
+    return (p?.[key] ?? '') as string;
+  }
+
+  function saveDetail(key: DetailKey, raw: string) {
+    const trimmed = raw.trim();
+    const previous = ((p?.[key] ?? '') as string).trim();
+    setDrafts((d) => {
+      const next = { ...d };
+      delete next[key];
+      return next;
+    });
+    if (trimmed === previous) return;
+
+    // Name is required (min_length=1); optional fields clear with null.
+    if (key === 'name') {
+      if (!trimmed) {
+        setSaveError('Name cannot be empty.');
+        return;
+      }
+      setSaveError(null);
+      updateProfile.mutate(
+        { name: trimmed },
+        {
+          onError: (error) =>
+            setSaveError(getApiErrorMessage(error, 'Could not save profile. Try again.')),
+        },
+      );
+      return;
+    }
+
+    setSaveError(null);
+    updateProfile.mutate({ [key]: trimmed || null } as ProfileUpdatePayload, {
+      onError: (error) =>
+        setSaveError(getApiErrorMessage(error, 'Could not save profile. Try again.')),
+    });
+  }
+
+  function savePreference(payload: ProfileUpdatePayload) {
+    setSaveError(null);
+    updateProfile.mutate(payload, {
+      onError: (error) =>
+        setSaveError(getApiErrorMessage(error, 'Could not save preference. Try again.')),
+    });
+  }
 
   return (
     <ScreenScaffold month={month} onMonthChange={setMonth} showMonthControls={false}>
@@ -94,24 +148,28 @@ export default function ProfileScreen() {
         lead={
           <Card size="large" style={styles.panel}>
             <Text style={styles.panelTitle}>Your details</Text>
-            <Text style={styles.panelSub}>Edits save as you type.</Text>
+            <Text style={styles.panelSub}>Edits save when you leave a field.</Text>
+            {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
             <View style={styles.fields}>
               {(
                 [
-                  ['Name', 'name', p?.name ?? ''],
-                  ['Phone', 'phone', p?.phone ?? ''],
-                  ['City', 'city', p?.city ?? ''],
-                  ['Occupation', 'occupation', p?.occupation ?? ''],
+                  ['Name', 'name'],
+                  ['Phone', 'phone'],
+                  ['City', 'city'],
+                  ['Occupation', 'occupation'],
                 ] as const
-              ).map(([label, key, value]) => (
+              ).map(([label, key]) => (
                 <View key={key} style={styles.field}>
                   <Text style={styles.fieldLabel}>{label}</Text>
                   <TextInput
-                    style={styles.fieldInput}
-                    defaultValue={value}
-                    onEndEditing={(e) =>
-                      updateProfile.mutate({ [key]: e.nativeEvent.text || null })
-                    }
+                    style={[styles.fieldInput, styles.fieldInputWeb]}
+                    value={fieldValue(key)}
+                    onChangeText={(text) => {
+                      setDrafts((d) => ({ ...d, [key]: text }));
+                      if (saveError) setSaveError(null);
+                    }}
+                    onBlur={() => saveDetail(key, fieldValue(key))}
+                    autoCapitalize={key === 'name' || key === 'city' ? 'words' : 'none'}
                   />
                 </View>
               ))}
@@ -127,32 +185,34 @@ export default function ProfileScreen() {
                   'Week starts Monday',
                   'Start weeks on Monday for reports',
                   p?.week_start_monday ?? true,
+                  'week_start_monday',
                 ],
                 [
                   'Round-up savings',
                   'Round expenses up to the nearest ₹10',
                   p?.round_up_savings ?? false,
+                  'round_up_savings',
                 ],
-                ['Weekly digest', 'Email summary every Sunday', p?.digest_enabled ?? true],
-                ['Sound effects', 'Subtle sounds for actions', p?.sound_enabled ?? true],
+                [
+                  'Weekly digest',
+                  'Email summary every Sunday',
+                  p?.digest_enabled ?? true,
+                  'digest_enabled',
+                ],
+                [
+                  'Sound effects',
+                  'Subtle sounds for actions',
+                  p?.sound_enabled ?? true,
+                  'sound_enabled',
+                ],
               ] as const
-            ).map(([label, sub, on]) => (
+            ).map(([label, sub, on, key]) => (
               <View key={label} style={styles.prefRow}>
                 <View style={styles.prefCopy}>
                   <Text style={styles.prefLabel}>{label}</Text>
                   <Text style={styles.prefSub}>{sub}</Text>
                 </View>
-                <ToggleSwitch
-                  value={on}
-                  onValueChange={(v) =>
-                    updateProfile.mutate({
-                      week_start_monday: label.includes('Monday') ? v : undefined,
-                      round_up_savings: label.includes('Round') ? v : undefined,
-                      digest_enabled: label.includes('digest') ? v : undefined,
-                      sound_enabled: label.includes('Sound') ? v : undefined,
-                    })
-                  }
-                />
+                <ToggleSwitch value={on} onValueChange={(v) => savePreference({ [key]: v })} />
               </View>
             ))}
           </Card>
@@ -268,6 +328,12 @@ const styles = StyleSheet.create({
     color: colors.textCaption,
     marginBottom: 6,
   },
+  saveError: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 12.5,
+    color: colors.dangerValue,
+    marginBottom: 4,
+  },
   fields: { gap: 12 },
   field: { gap: 7 },
   fieldLabel: { fontFamily: fontFamily.bold, fontSize: 12, color: colors.textLabel },
@@ -282,6 +348,7 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     color: colors.textPrimary,
   },
+  fieldInputWeb: Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {},
   prefRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
@@ -27,6 +27,7 @@ import {
 import { compact, pctWidth } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth, formatShortDate } from '@/utils/date';
 
 const ASSET_LABELS: Record<string, string> = {
@@ -79,10 +80,9 @@ export default function AssetsScreen() {
   const [addOpen, setAddOpen] = useState(false);
 
   function confirmDeleteAsset(assetId: string) {
-    Alert.alert('Delete this asset?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteAsset.mutate(assetId) },
-    ]);
+    confirmDestructive('Delete this asset?', 'This cannot be undone.', () =>
+      deleteAsset.mutate(assetId),
+    );
   }
 
   const assetsList = assetsData ?? summary?.assets ?? [];

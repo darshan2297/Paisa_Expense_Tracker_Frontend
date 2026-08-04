@@ -12,7 +12,7 @@ import { useNotifications } from '@/features/notifications/hooks';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { pageMetaForSegment } from '@/navigation/navConfig';
 import { colors } from '@/theme/colors';
-import { radius, spacing } from '@/theme/spacing';
+import { radius } from '@/theme/spacing';
 import { fontFamily } from '@/theme/typography';
 
 type PageHeaderProps = {
@@ -30,7 +30,9 @@ export function PageHeader({ month, onMonthChange, onAddTransaction }: PageHeade
   const { data: notifications } = useNotifications();
   const data = dashboardData ?? emptyLifeDashboard(month);
   const unreadNotifications = (notifications ?? []).filter((n) => !n.read_at).length;
-  const badgeCount = unreadNotifications > 0 ? unreadNotifications : data.reminderCount;
+  // Badge must match what the panel can show: unread notifications, or
+  // upcoming reminders when the notifications inbox is empty.
+  const badgeCount = unreadNotifications > 0 ? unreadNotifications : data.upcoming.length;
   const [notifOpen, setNotifOpen] = useState(false);
 
   return (

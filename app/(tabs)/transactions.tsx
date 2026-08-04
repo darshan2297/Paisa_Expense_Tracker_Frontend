@@ -29,6 +29,7 @@ import type { Transaction, TransactionType } from '@/features/transactions/types
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
 import {
@@ -110,14 +111,9 @@ export default function TransactionsScreen() {
   const deleteTransaction = useDeleteTransaction();
 
   function confirmDeleteTransaction(transactionId: string) {
-    Alert.alert('Delete transaction?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteTransaction.mutate(transactionId),
-      },
-    ]);
+    confirmDestructive('Delete transaction?', 'This cannot be undone.', () =>
+      deleteTransaction.mutate(transactionId),
+    );
   }
 
   const groups = useMemo(() => groupByDate(transactions.data?.data ?? []), [transactions.data]);

@@ -6,8 +6,6 @@ import {
   PlusJakartaSans_800ExtraBold,
   useFonts as useGoogleFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
-import type { TextStyle } from 'react-native';
-
 /**
  * Font family names, keyed by weight. These map 1:1 to the fonts loaded via
  * `useAppFonts` below — always load fonts before rendering any text that
@@ -41,12 +39,14 @@ export const fontSize = {
 } as const;
 
 /**
- * Text style for monetary values — tabular figures so amounts align in
- * columns (lists, ledgers) instead of jittering as digits change width.
+ * Text style for monetary values.
+ *
+ * Tabular figures are applied via web CSS (`font-variant-numeric`) in
+ * `WebScrollbarStyles` — RN Web's `fontVariant: ['tabular-nums']` maps to
+ * invalid CSS (`font-variant`) and paints a tight box around every amount.
  */
-export const moneyTextStyle: { fontFamily: string; fontVariant: TextStyle['fontVariant'] } = {
+export const moneyTextStyle: { fontFamily: string } = {
   fontFamily: fontFamily.semibold,
-  fontVariant: ['tabular-nums'],
 };
 
 /** Loads all Plus Jakarta Sans weights used by the app. Call once, near the app root. */

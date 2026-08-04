@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DesignGrid } from '@/components/design/DesignGrid';
 import {
@@ -33,6 +33,7 @@ import {
 } from '@/features/groups/hooks';
 import type { Group } from '@/features/groups/types';
 import { initials } from '@/mock/format';
+import { confirmDestructive } from '@/utils/confirm';
 import { getApiErrorMessage } from '@/utils/errors';
 import { formatINR } from '@/utils/currency';
 import { colors } from '@/theme/colors';
@@ -391,36 +392,23 @@ export default function SharedScreen() {
   };
 
   function confirmDeleteGroup(groupId: string) {
-    Alert.alert(
+    confirmDestructive(
       'Delete this group?',
       'All its expenses and settlements will be removed too. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteGroup.mutate(groupId) },
-      ],
+      () => deleteGroup.mutate(groupId),
     );
   }
 
   function confirmDeleteExpense(groupId: string, expenseId: string) {
-    Alert.alert('Delete this expense?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteExpense.mutate({ groupId, expenseId }),
-      },
-    ]);
+    confirmDestructive('Delete this expense?', 'This cannot be undone.', () =>
+      deleteExpense.mutate({ groupId, expenseId }),
+    );
   }
 
   function confirmDeleteSettlement(groupId: string, settlementId: string) {
-    Alert.alert('Delete this settlement record?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteSettlement.mutate({ groupId, settlementId }),
-      },
-    ]);
+    confirmDestructive('Delete this settlement record?', 'This cannot be undone.', () =>
+      deleteSettlement.mutate({ groupId, settlementId }),
+    );
   }
 
   const openSettleSheet = (groupId: string, fromMember: string, amount: number) => {

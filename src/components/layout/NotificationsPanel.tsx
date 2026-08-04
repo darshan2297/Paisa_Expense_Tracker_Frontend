@@ -2,6 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Sheet } from '@/components/Sheet';
+import { useLifeDashboard } from '@/features/dashboard/hooks';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -10,7 +12,7 @@ import {
 import type { Notification } from '@/features/notifications/types';
 import { colors } from '@/theme/colors';
 import { fontFamily } from '@/theme/typography';
-import { formatRelativeDateTime } from '@/utils/date';
+import { currentYearMonth, formatRelativeDateTime } from '@/utils/date';
 
 export type NotificationsPanelProps = {
   visible: boolean;
@@ -18,17 +20,18 @@ export type NotificationsPanelProps = {
 };
 
 /**
- * The bell used to just navigate to the Bills tab, which has no
- * notification content at all - a placeholder destination, not a real
- * notification center. This is that real surface: the backend already had
- * full read/read-all support (`GET/PATCH /notifications`) that nothing in
- * the app used yet.
+ * Notification center: backend inbox (`GET /notifications`) plus upcoming
+ * reminders from the life dashboard when the inbox is empty — so the bell
+ * badge count always matches visible content.
  */
 export function NotificationsPanel({ visible, onClose }: NotificationsPanelProps) {
   const { data: notifications = [] } = useNotifications();
+  const { data: dashboardData } = useLifeDashboard(currentYearMonth());
+  const upcoming = (dashboardData ?? emptyLifeDashboard(currentYearMonth())).upcoming;
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const showReminders = notifications.length === 0 && upcoming.length > 0;
 
   function onPressNotification(n: Notification) {
     if (!n.read_at) {
@@ -47,9 +50,11 @@ export function NotificationsPanel({ visible, onClose }: NotificationsPanelProps
         ) : null}
       </View>
 
-      {notifications.length === 0 ? (
+      {notifications.length === 0 && !showReminders ? (
         <Text style={styles.empty}>No notifications yet.</Text>
-      ) : (
+      ) : null}
+
+      {notifications.length > 0 ? (
         <View style={styles.list}>
           {notifications.map((n) => (
             <Pressable
@@ -67,7 +72,23 @@ export function NotificationsPanel({ visible, onClose }: NotificationsPanelProps
             </Pressable>
           ))}
         </View>
-      )}
+      ) : null}
+
+      {showReminders ? (
+        <View style={styles.list}>
+          <Text style={styles.sectionLabel}>Upcoming reminders</Text>
+          {upcoming.map((item) => (
+            <View key={item.id} style={styles.row}>
+              <View style={[styles.dot, styles.dotUnread]} />
+              <View style={styles.copy}>
+                <Text style={styles.rowTitle}>{item.label}</Text>
+                <Text style={styles.rowBody}>{item.sub}</Text>
+              </View>
+              <Text style={styles.reminderAmount}>{item.amount}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </Sheet>
   );
 }
@@ -96,6 +117,14 @@ const styles = StyleSheet.create({
     color: colors.textCaption,
     paddingVertical: 24,
     textAlign: 'center',
+  },
+  sectionLabel: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11.5,
+    color: colors.textCaption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 4,
   },
   list: {
     gap: 2,
@@ -139,6 +168,12 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semibold,
     fontSize: 11,
     color: colors.textCaption,
+    marginTop: 2,
+  },
+  reminderAmount: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12.5,
+    color: colors.textPrimary,
     marginTop: 2,
   },
 });

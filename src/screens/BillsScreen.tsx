@@ -35,6 +35,7 @@ import type { Bill, BillKind } from '@/features/bills/types';
 import { compact, fmt } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth } from '@/utils/date';
 
 type BillMeta = { code: string; tag: string; bg: string; fg: string };
@@ -91,7 +92,7 @@ const BILL_KIND_TO_API: Record<string, BillKind> = {
 /** Design HTML `isBills` — bills view with hero, stats, buckets, and full list. */
 export default function BillsScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const { data } = useBills(month);
+  const { data, isError, isFetching, refetch } = useBills(month);
   const payBill = usePayBill(month);
   const unpayBill = useUnpayBill(month);
   const toggleBillAuto = useToggleBillAuto(month);
@@ -181,7 +182,7 @@ export default function BillsScreen() {
   }
 
   function removeBill(id: string) {
-    deleteBill.mutate(id);
+    confirmDestructive('Delete this bill?', 'This cannot be undone.', () => deleteBill.mutate(id));
   }
 
   return (
@@ -232,7 +233,15 @@ export default function BillsScreen() {
       />
 
       <Card size="large" style={styles.listCard}>
-        {rows.length === 0 ? (
+        {isError ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>Could not load bills</Text>
+            <Text style={styles.emptySub}>Check your connection and try again.</Text>
+            <Pressable onPress={() => refetch()} style={styles.retryBtn} disabled={isFetching}>
+              <Text style={styles.retryLabel}>{isFetching ? 'Retrying…' : 'Retry'}</Text>
+            </Pressable>
+          </View>
+        ) : rows.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No bills yet</Text>
             <Text style={styles.emptySub}>
@@ -498,5 +507,14 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
+  retryBtn: {
+    marginTop: 14,
+    height: 36,
+    paddingHorizontal: 16,
+    borderRadius: 11,
+    backgroundColor: colors.textPrimary,
+    justifyContent: 'center',
+  },
+  retryLabel: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.heroText },
   freqBlock: { gap: 8 },
 });

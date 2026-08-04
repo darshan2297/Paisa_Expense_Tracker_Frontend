@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid } from '@/components/design/DesignGrid';
@@ -19,6 +19,7 @@ import {
   ModalTextField,
 } from '@/components/modal/ModalForm';
 import { Sheet } from '@/components/Sheet';
+import { confirmDestructive } from '@/utils/confirm';
 import { getApiErrorMessage } from '@/utils/errors';
 import {
   useContributeToGoal,
@@ -105,21 +106,15 @@ export default function WealthScreen() {
   const contributeToGoal = useContributeToGoal();
 
   function confirmDeleteGoal(goalId: string) {
-    Alert.alert('Delete this goal?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteGoal.mutate(goalId) },
-    ]);
+    confirmDestructive('Delete this goal?', 'This cannot be undone.', () =>
+      deleteGoal.mutate(goalId),
+    );
   }
 
   function confirmDeleteInvestment(investmentId: string) {
-    Alert.alert('Delete this investment?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteInvestment.mutate(investmentId),
-      },
-    ]);
+    confirmDestructive('Delete this investment?', 'This cannot be undone.', () =>
+      deleteInvestment.mutate(investmentId),
+    );
   }
 
   const goalsList = goalsData ?? [];

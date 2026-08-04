@@ -6,7 +6,14 @@ import type { BillCreatePayload, BillUpdatePayload } from './types';
 export const billsQueryKey = (month?: string) => ['bills', month ?? 'all'] as const;
 
 export function useBills(month?: string) {
-  return useQuery({ queryKey: billsQueryKey(month), queryFn: () => billsApi.getBills(month) });
+  return useQuery({
+    queryKey: billsQueryKey(month),
+    queryFn: () => billsApi.getBills(month),
+    // Bills change via pay/create elsewhere; always hit the network on mount
+    // so a persisted empty cache cannot hide existing bills.
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
 }
 
 export function useCreateBill(month?: string) {

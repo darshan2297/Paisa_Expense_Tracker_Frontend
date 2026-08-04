@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from 'react';
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -100,7 +101,7 @@ export function ModalAmountField({
           placeholderTextColor={colors.textCaption}
           keyboardType="decimal-pad"
           inputMode="decimal"
-          style={[styles.amountInput, moneyTextStyle]}
+          style={[styles.amountInput, moneyTextStyle, styles.amountInputWeb]}
         />
       </View>
     </ModalField>
@@ -365,6 +366,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.84,
     color: colors.textPrimary,
   },
+  amountInputWeb:
+    Platform.OS === 'web'
+      ? ({ outlineStyle: 'none', borderWidth: 0, boxShadow: 'none' } as object)
+      : {},
   input: {
     height: 46,
     paddingHorizontal: 14,

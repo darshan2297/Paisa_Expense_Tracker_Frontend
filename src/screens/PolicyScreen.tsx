@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid } from '@/components/design/DesignGrid';
@@ -31,6 +31,7 @@ import { compact, fmt } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth, formatShortDate } from '@/utils/date';
 
 const LEAD_DAYS = 15;
@@ -72,10 +73,9 @@ export default function PolicyScreen() {
   const togglePremiumPaid = useTogglePolicyPremiumPaid();
 
   function confirmDeletePolicy(policyId: string) {
-    Alert.alert('Delete this policy?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deletePolicy.mutate(policyId) },
-    ]);
+    confirmDestructive('Delete this policy?', 'This cannot be undone.', () =>
+      deletePolicy.mutate(policyId),
+    );
   }
 
   const policiesList = policiesData ?? summary?.policies ?? [];

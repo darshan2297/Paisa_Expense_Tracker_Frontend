@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
@@ -25,6 +25,7 @@ import { compact, fmt, pctWidth } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth } from '@/utils/date';
 
 const LOAN_LABELS: Record<string, string> = {
@@ -99,10 +100,9 @@ export default function LoansScreen() {
   const deleteLoan = useDeleteLoan();
 
   function confirmDeleteLoan(loanId: string) {
-    Alert.alert('Delete this loan?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteLoan.mutate(loanId) },
-    ]);
+    confirmDestructive('Delete this loan?', 'This cannot be undone.', () =>
+      deleteLoan.mutate(loanId),
+    );
   }
 
   const loanStates = useMemo(
