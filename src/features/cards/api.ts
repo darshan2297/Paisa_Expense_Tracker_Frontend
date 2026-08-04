@@ -6,6 +6,7 @@ import type {
   CardsSummary,
   CreditCard,
   CreditCardCreatePayload,
+  CreditCardUpdatePayload,
 } from './types';
 
 export async function getCards(): Promise<CreditCard[]> {
@@ -20,6 +21,14 @@ export async function getCardsSummary(): Promise<CardsSummary> {
 
 export async function createCard(payload: CreditCardCreatePayload): Promise<CreditCard> {
   const response = await apiClient.post<Envelope<CreditCard>>('/cards', payload);
+  return response.data.data as CreditCard;
+}
+
+export async function updateCard(
+  cardId: string,
+  payload: CreditCardUpdatePayload,
+): Promise<CreditCard> {
+  const response = await apiClient.patch<Envelope<CreditCard>>(`/cards/${cardId}`, payload);
   return response.data.data as CreditCard;
 }
 

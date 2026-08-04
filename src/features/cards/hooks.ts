@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import * as cardsApi from './api';
-import type { CardAmountPayload, CreditCardCreatePayload } from './types';
+import type { CardAmountPayload, CreditCardCreatePayload, CreditCardUpdatePayload } from './types';
 
 export const cardsQueryKey = ['cards'] as const;
 export const cardsSummaryQueryKey = ['cards', 'summary'] as const;
@@ -62,6 +62,20 @@ export function useSpendOnCard() {
       queryClient.invalidateQueries({ queryKey: cardsQueryKey });
       queryClient.invalidateQueries({ queryKey: cardsSummaryQueryKey });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['netWorth'] });
+    },
+  });
+}
+
+export function useUpdateCard() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ cardId, payload }: { cardId: string; payload: CreditCardUpdatePayload }) =>
+      cardsApi.updateCard(cardId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cardsQueryKey });
+      queryClient.invalidateQueries({ queryKey: cardsSummaryQueryKey });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['netWorth'] });
     },

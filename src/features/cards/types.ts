@@ -34,6 +34,8 @@ export type CreditCardCreatePayload = {
   opened_on?: string | null;
 };
 
+export type CreditCardUpdatePayload = Partial<CreditCardCreatePayload>;
+
 export type CardAmountPayload = {
   amount: string;
   note?: string | null;

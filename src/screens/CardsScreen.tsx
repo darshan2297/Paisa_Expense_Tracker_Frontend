@@ -28,6 +28,7 @@ import {
   useDeleteCard,
   usePayCard,
   useSpendOnCard,
+  useUpdateCard,
 } from '@/features/cards/hooks';
 import type { CreditCard } from '@/features/cards/types';
 import { useCategories } from '@/features/categories/hooks';
@@ -135,6 +136,7 @@ export default function CardsScreen() {
   const deleteCard = useDeleteCard();
   const payCard = usePayCard();
   const [addOpen, setAddOpen] = useState(false);
+  const [editCard, setEditCard] = useState<CreditCard | null>(null);
   const [spendCard, setSpendCard] = useState<CreditCard | null>(null);
   const [payEmiCard, setPayEmiCard] = useState<CreditCard | null>(null);
   const cards = apiCards ?? [];
@@ -359,9 +361,22 @@ export default function CardsScreen() {
                         {Math.round(util)}% used · {u.status}
                       </Text>
                     </View>
-                    <Pressable onPress={() => removeCard(card.id)} style={styles.removeBtn}>
-                      <Text style={styles.removeBtnText}>×</Text>
-                    </Pressable>
+                    <View style={styles.cardActions}>
+                      <Pressable
+                        accessibilityLabel="Edit card"
+                        onPress={() => setEditCard(card)}
+                        style={styles.iconBtn}
+                      >
+                        <Feather name="edit-2" size={15} color={colors.textCaption} />
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel="Delete card"
+                        onPress={() => removeCard(card.id)}
+                        style={styles.iconBtn}
+                      >
+                        <Feather name="trash-2" size={15} color={colors.textCaption} />
+                      </Pressable>
+                    </View>
                   </View>
 
                   <View style={styles.detailGrid}>
@@ -475,6 +490,7 @@ export default function CardsScreen() {
       />
 
       <AddCardSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+      <EditCardSheet card={editCard} onClose={() => setEditCard(null)} />
       <SpendOnCardSheet card={spendCard} onClose={() => setSpendCard(null)} />
       <PayEmiSheet
         card={payEmiCard}
@@ -583,6 +599,122 @@ function AddCardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
         <ModalSave label="Save" onPress={submit} loading={createCard.isPending} />
       </ModalBody>
     </Sheet>
+  );
+}
+
+function EditCardSheet({ card, onClose }: { card: CreditCard | null; onClose: () => void }) {
+  return (
+    <Sheet visible={!!card} onClose={onClose} variant="center">
+      {card ? <EditCardForm key={card.id} card={card} onClose={onClose} /> : null}
+    </Sheet>
+  );
+}
+
+function EditCardForm({ card, onClose }: { card: CreditCard; onClose: () => void }) {
+  const updateCard = useUpdateCard();
+  const [limit, setLimit] = useState(String(Number(card.credit_limit) || ''));
+  const [name, setName] = useState(card.name);
+  const [bank, setBank] = useState(card.bank);
+  const [last4, setLast4] = useState(card.last4 || '');
+  const [outstanding, setOutstanding] = useState(String(Number(card.outstanding) || 0));
+  const [emiAmount, setEmiAmount] = useState(String(Number(card.emi_amount) || 0));
+  const [dueDay, setDueDay] = useState(String(card.due_day || 10));
+  const [date, setDate] = useState(card.opened_on || new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function submit() {
+    if (!limit || Number(limit) <= 0) {
+      setError('Enter a credit limit greater than zero.');
+      return;
+    }
+    if (!name.trim() || !bank.trim()) {
+      setError('Add the card name and issuer.');
+      return;
+    }
+    const outstandingValue = Number(outstanding);
+    if (!Number.isFinite(outstandingValue) || outstandingValue < 0) {
+      setError('Enter a valid outstanding amount.');
+      return;
+    }
+    if (outstandingValue > Number(limit)) {
+      setError('Outstanding cannot exceed the credit limit.');
+      return;
+    }
+    const digits = last4.replace(/\D/g, '').slice(-4);
+    if (digits.length !== 4) {
+      setError('Enter the last 4 digits of the card.');
+      return;
+    }
+    const due = Math.min(28, Math.max(1, parseInt(dueDay, 10) || 10));
+    const statementDay = due === card.due_day ? card.statement_day : due > 15 ? due - 15 : due + 13;
+    updateCard.mutate(
+      {
+        cardId: card.id,
+        payload: {
+          name: name.trim(),
+          bank: bank.trim(),
+          last4: digits,
+          credit_limit: String(Number(limit)),
+          outstanding: String(outstandingValue),
+          emi_amount: String(Math.max(0, Number(emiAmount) || 0)),
+          statement_day: statementDay,
+          due_day: due,
+          opened_on: date || null,
+        },
+      },
+      {
+        onSuccess: onClose,
+        onError: () => setError('Could not save changes. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <>
+      <ModalHeader title="Edit card" onClose={onClose} />
+      <ModalBody>
+        <ModalAmountField label="Credit limit" value={limit} onChangeText={setLimit} />
+        <ModalTextField
+          label="Card name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Millennia"
+        />
+        <ModalTextField label="Bank" value={bank} onChangeText={setBank} placeholder="e.g. HDFC" />
+        <ModalTextField
+          label="Last 4 digits"
+          value={last4}
+          onChangeText={setLast4}
+          placeholder="1234"
+          numeric
+        />
+        <ModalTextField
+          label="Current outstanding"
+          value={outstanding}
+          onChangeText={setOutstanding}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Monthly EMI (optional)"
+          value={emiAmount}
+          onChangeText={setEmiAmount}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Payment due day of month"
+          value={dueDay}
+          onChangeText={setDueDay}
+          placeholder="10"
+          numeric
+        />
+        <ModalDateNoteRow date={date} onDate={setDate} note={note} onNote={setNote} />
+        <ModalError message={error} />
+        <ModalSave label="Save changes" onPress={submit} loading={updateCard.isPending} />
+      </ModalBody>
+    </>
   );
 }
 
@@ -809,15 +941,19 @@ const styles = StyleSheet.create({
   detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   utilBadge: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 99 },
   utilBadgeText: { fontFamily: fontFamily.extrabold, fontSize: 11.5 },
-  removeBtn: {
+  cardActions: {
     marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  iconBtn: {
     width: 28,
     height: 28,
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  removeBtnText: { fontSize: 18, color: colors.textCaption, lineHeight: 20 },
   detailGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
