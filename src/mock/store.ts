@@ -148,6 +148,7 @@ class MockStore {
         ? Math.max(1, daysInMonth - today.getDate() + 1)
         : daysInMonth;
 
+    const overBy = Math.max(0, spent - monthly);
     return this.delay({
       monthly_amount: String(monthly),
       spent: String(spent),
@@ -155,6 +156,9 @@ class MockStore {
       pct_remaining: monthly ? Math.max(0, (remaining / monthly) * 100) : 0,
       per_day_left: String(Math.max(0, remaining / daysRemaining)),
       days_remaining_in_month: daysRemaining,
+      alert_triggered:
+        monthly > 0 && spent / monthly >= Number(this.budgetSettings.alert_pct) / 100,
+      over_by: String(overBy),
     });
   }
 

@@ -43,11 +43,16 @@ export async function clearTokens(): Promise<void> {
  * `EXPO_PUBLIC_API_URL` is inlined at build time by Expo (any env var
  * prefixed `EXPO_PUBLIC_` is exposed to client code) — see `.env.example`.
  */
+const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL;
+const isNgrokApi = typeof apiBaseUrl === 'string' && apiBaseUrl.includes('ngrok');
+
 export const apiClient = createAxiosClient({
-  baseURL: process.env.EXPO_PUBLIC_API_URL,
+  baseURL: apiBaseUrl,
   timeout: 15000,
   headers: {
     Accept: 'application/json',
+    // Free ngrok serves an interstitial HTML page unless this header is set.
+    ...(isNgrokApi ? { 'ngrok-skip-browser-warning': '1' } : {}),
   },
 });
 
@@ -75,10 +80,10 @@ async function refreshAccessToken(): Promise<string | null> {
   try {
     // A bare axios instance, not `apiClient` - it must not carry the
     // (about-to-be-invalid) access token or re-enter these interceptors.
-    const response = await createAxiosClient({ baseURL: process.env.EXPO_PUBLIC_API_URL }).post(
-      '/auth/refresh',
-      { refresh_token: refreshToken },
-    );
+    const response = await createAxiosClient({
+      baseURL: apiBaseUrl,
+      headers: isNgrokApi ? { 'ngrok-skip-browser-warning': '1' } : undefined,
+    }).post('/auth/refresh', { refresh_token: refreshToken });
     const pair = response.data.data as { access_token: string; refresh_token: string };
     await storeTokens(pair.access_token, pair.refresh_token);
     return pair.access_token;

@@ -1,10 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { useSegments } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BrandMark } from '@/components/layout/BrandMark';
+import { NotificationsPanel } from '@/components/layout/NotificationsPanel';
 import { MonthSwitcher } from '@/components/MonthSwitcher';
 import { useLifeDashboard } from '@/features/dashboard/hooks';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
+import { useNotifications } from '@/features/notifications/hooks';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { pageMetaForSegment } from '@/navigation/navConfig';
 import { colors } from '@/theme/colors';
@@ -22,7 +26,12 @@ export function PageHeader({ month, onMonthChange, onAddTransaction }: PageHeade
   const tabSegment = segments[1] as string | undefined;
   const meta = pageMetaForSegment(tabSegment);
   const { isMobile, isDesktopWeb } = useResponsiveLayout();
-  const { data } = useLifeDashboard();
+  const { data: dashboardData } = useLifeDashboard(month);
+  const { data: notifications } = useNotifications();
+  const data = dashboardData ?? emptyLifeDashboard(month);
+  const unreadNotifications = (notifications ?? []).filter((n) => !n.read_at).length;
+  const badgeCount = unreadNotifications > 0 ? unreadNotifications : data.reminderCount;
+  const [notifOpen, setNotifOpen] = useState(false);
 
   return (
     <View style={styles.header}>
@@ -35,11 +44,15 @@ export function PageHeader({ month, onMonthChange, onAddTransaction }: PageHeade
           </Text>
         </View>
         {isMobile ? (
-          <Pressable style={styles.bellButton} accessibilityLabel="Reminders">
-            <Feather name="bell" size={17} color={colors.textMuted} />
-            {data.reminderCount > 0 ? (
+          <Pressable
+            style={styles.bellButton}
+            accessibilityLabel="Reminders"
+            onPress={() => setNotifOpen(true)}
+          >
+            <Feather name="bell" size={17} color="#5C564D" />
+            {badgeCount > 0 ? (
               <View style={styles.bellBadge}>
-                <Text style={styles.bellBadgeText}>{data.reminderCount}</Text>
+                <Text style={styles.bellBadgeText}>{badgeCount}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -50,11 +63,15 @@ export function PageHeader({ month, onMonthChange, onAddTransaction }: PageHeade
         <MonthSwitcher month={month} onChange={onMonthChange} />
 
         {isDesktopWeb ? (
-          <Pressable style={styles.bellButton} accessibilityLabel="Reminders">
-            <Feather name="bell" size={17} color={colors.textMuted} />
-            {data.reminderCount > 0 ? (
+          <Pressable
+            style={styles.bellButton}
+            accessibilityLabel="Reminders"
+            onPress={() => setNotifOpen(true)}
+          >
+            <Feather name="bell" size={17} color="#5C564D" />
+            {badgeCount > 0 ? (
               <View style={styles.bellBadge}>
-                <Text style={styles.bellBadgeText}>{data.reminderCount}</Text>
+                <Text style={styles.bellBadgeText}>{badgeCount}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -72,6 +89,8 @@ export function PageHeader({ month, onMonthChange, onAddTransaction }: PageHeade
           <Text style={styles.addLabel}>Add transaction</Text>
         </Pressable>
       </View>
+
+      <NotificationsPanel visible={notifOpen} onClose={() => setNotifOpen(false)} />
     </View>
   );
 }
@@ -124,8 +143,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   bellButton: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: radius.chip,
     borderWidth: 1,
     borderColor: colors.border,

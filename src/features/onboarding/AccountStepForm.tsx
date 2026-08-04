@@ -28,8 +28,8 @@ type AccountFormValues = {
 
 export type AccountStepFormProps = {
   mode: AuthMode;
-  /** Called after a successful register/login — advances the flow in-place. */
-  onAuthenticated: () => void;
+  /** Called after a successful register/login — advances or routes into the app. */
+  onAuthenticated: (accountPinConfigured: boolean) => void | Promise<void>;
 };
 
 /** Account-step body only (no page chrome) — used inside OnboardingFlow. */

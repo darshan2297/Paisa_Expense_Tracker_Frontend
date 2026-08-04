@@ -1,14 +1,30 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useSegments } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BrandMark, BrandWordmark } from '@/components/layout/BrandMark';
+import { useFixedCommitments } from '@/features/budget/hooks';
+import { useLogout } from '@/features/auth/hooks';
 import { useLifeDashboard } from '@/features/dashboard/hooks';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
+import { usePoliciesSummary } from '@/features/policies/hooks';
 import { activeNavIdFromSegment, NAV_GROUPS, type NavItem } from '@/navigation/navConfig';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { compactINR } from '@/utils/currency';
+import { currentYearMonth } from '@/utils/date';
+
+/** Renewals due within this many days count toward the "Policies" nav badge -
+ * same order of magnitude as the app's other reminder lead times (bills
+ * default to 3 days, the monthly budget reminder to 15). */
+const POLICY_RENEWAL_BADGE_WINDOW_DAYS = 30;
+
+function daysUntil(dateStr: string): number {
+  const target = new Date(dateStr).getTime();
+  const now = Date.now();
+  return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+}
 
 type SidebarProps = {
   onNavigate?: () => void;
@@ -49,7 +65,23 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const segments = useSegments();
   const tabSegment = segments[1] as string | undefined;
   const activeId = activeNavIdFromSegment(tabSegment);
-  const { data } = useLifeDashboard();
+  const { data: dashboardData } = useLifeDashboard();
+  const data = dashboardData ?? emptyLifeDashboard('');
+  const logout = useLogout();
+
+  // Real counts, not the hardcoded `badge: 1`/`badge: 2` placeholders that
+  // used to live in navConfig.ts and never changed no matter what happened
+  // in the app.
+  const { data: fixedCommitments } = useFixedCommitments(currentYearMonth());
+  const unpaidCommitmentCount = (fixedCommitments ?? []).filter((c) => !c.paid_this_month).length;
+  const { data: policiesSummary } = usePoliciesSummary();
+  const renewalsDueSoonCount = (policiesSummary?.policies ?? []).filter(
+    (p) => daysUntil(p.renewal_date) <= POLICY_RENEWAL_BADGE_WINDOW_DAYS,
+  ).length;
+  const badgeOverrides: Partial<Record<NavItem['id'], number>> = {
+    planned: unpaidCommitmentCount,
+    policy: renewalsDueSoonCount,
+  };
 
   const budgetBarColor = data.budgetOver
     ? '#EF6B4E'
@@ -69,14 +101,25 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         <BrandWordmark />
       </View>
 
-      <ScrollView style={styles.navScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.navScroll}
+        contentContainerStyle={styles.navScrollContent}
+        // RN-web hides *all* scrollbars if either indicator prop is false —
+        // keep both enabled so the mockup hairline bar can render on web.
+        showsVerticalScrollIndicator
+        showsHorizontalScrollIndicator
+        // Web: thin custom scrollbar (see WebScrollbarStyles). Native ignores className.
+        {...(Platform.OS === 'web' ? ({ className: 'paisa-thin-scroll' } as object) : null)}
+      >
         {NAV_GROUPS.map((group) => (
           <View key={group.title} style={styles.navGroup}>
             <Text style={styles.groupTitle}>{group.title}</Text>
             {group.items.map((item) => (
               <NavButton
                 key={item.id}
-                item={item}
+                item={
+                  item.id in badgeOverrides ? { ...item, badge: badgeOverrides[item.id] } : item
+                }
                 active={activeId === item.id}
                 onPress={() => go(item)}
               />
@@ -110,8 +153,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             </View>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/(auth)/login')}
-            style={({ pressed }) => [styles.logout, pressed && styles.logoutPressed]}
+            onPress={() => logout.mutate()}
+            disabled={logout.isPending}
+            style={({ pressed }) => [
+              styles.logout,
+              (pressed || logout.isPending) && styles.logoutPressed,
+            ]}
             accessibilityLabel="Log out"
           >
             <Feather name="log-out" size={15} color={colors.textLabel} />
@@ -139,7 +186,7 @@ function BudgetWidget({
     <View style={styles.budgetCard}>
       <View style={styles.budgetHeader}>
         <Text style={styles.budgetEyebrow}>Budget left</Text>
-        <Pressable onPress={onEdit} hitSlop={8}>
+        <Pressable onPress={onEdit} hitSlop={8} style={styles.budgetEditButton}>
           <Text style={styles.budgetEdit}>edit</Text>
         </Pressable>
       </View>
@@ -162,12 +209,17 @@ const styles = StyleSheet.create({
     width: 246,
     flexShrink: 0,
     alignSelf: 'stretch',
+    // Match mockup `height: 100vh` so the nav ScrollView gets a bounded
+    // height and can scroll (otherwise overflow is clipped with no bar).
+    height: '100%',
+    maxHeight: '100%',
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.border,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xxl,
     gap: 26,
+    overflow: 'hidden',
   },
   brandRow: {
     flexDirection: 'row',
@@ -177,6 +229,10 @@ const styles = StyleSheet.create({
   },
   navScroll: {
     flex: 1,
+    minHeight: 0,
+  },
+  navScrollContent: {
+    paddingBottom: 8,
   },
   navGroup: {
     gap: 3,
@@ -210,7 +266,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semibold,
     fontSize: 13.5,
     letterSpacing: -0.14,
-    color: colors.textMuted,
+    color: colors.textSoft,
   },
   navLabelActive: {
     color: colors.accentHover,
@@ -250,8 +306,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: '#7A73B8',
   },
-  budgetEdit: {
+  budgetEditButton: {
     marginLeft: 'auto',
+  },
+  budgetEdit: {
     fontFamily: fontFamily.bold,
     fontSize: 11,
     color: '#9791BE',

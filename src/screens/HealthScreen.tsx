@@ -1,121 +1,101 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { createElement, useMemo, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { Card } from '@/components/Card';
 import { HeroCard } from '@/components/HeroCard';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { useLifeDashboard } from '@/features/dashboard/hooks';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
+import { useHealthScore } from '@/features/insights/hooks';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
+import { formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
 
-type HealthCard = {
-  label: string;
-  value: string;
-  trend: string;
-  status: string;
-  statusBg: string;
-  statusFg: string;
-  color: string;
-  spark: number[];
-};
-
-const HEALTH_CARDS: HealthCard[] = [
-  {
-    label: 'Savings rate',
-    value: '3%',
-    trend: 'Below the 20% mark',
-    status: 'Needs work',
-    statusBg: '#F9E7E1',
-    statusFg: '#B04A34',
-    color: '#5B54D6',
-    spark: [8, 12, 10, 6, 4, 3],
-  },
-  {
-    label: 'Investment rate',
-    value: '25.5%',
-    trend: '₹22,500 invested monthly',
-    status: 'Healthy',
-    statusBg: '#E2F0E9',
-    statusFg: '#2F7D5D',
-    color: '#2F7D6E',
-    spark: [22, 23, 24, 25, 25, 26],
-  },
-  {
-    label: 'Budget utilisation',
-    value: '156%',
-    trend: '₹85,749 of ₹55,000',
-    status: 'Needs work',
-    statusBg: '#F9E7E1',
-    statusFg: '#B04A34',
-    color: '#D8A441',
-    spark: [90, 110, 130, 145, 150, 156],
-  },
-  {
-    label: 'Emergency fund',
-    value: '2.2 mo',
-    trend: 'Target 6 months of expenses',
-    status: 'Needs work',
-    statusBg: '#F9E7E1',
-    statusFg: '#B04A34',
-    color: '#3E6E9E',
-    spark: [1.2, 1.5, 1.7, 1.9, 2.0, 2.2],
-  },
-  {
-    label: 'Debt ratio',
-    value: '39%',
-    trend: 'EMIs against monthly income',
-    status: 'Watch',
-    statusBg: '#FAEED8',
-    statusFg: '#96702C',
-    color: '#C2543D',
-    spark: [38, 38, 39, 39, 39, 39],
-  },
-  {
-    label: 'Monthly cash flow',
-    value: '+₹2,601',
-    trend: 'Income minus everything spent',
-    status: 'Healthy',
-    statusBg: '#E2F0E9',
-    statusFg: '#2F7D5D',
-    color: '#2F7D5D',
-    spark: [12000, 8000, 5000, 4000, 3500, 2601],
-  },
-  {
-    label: 'Goal progress',
-    value: '49%',
-    trend: '4 goals being funded',
-    status: 'Watch',
-    statusBg: '#FAEED8',
-    statusFg: '#96702C',
-    color: '#A84A7C',
-    spark: [35, 38, 42, 45, 47, 49],
-  },
-  {
-    label: 'Net worth growth',
-    value: '+0.6%',
-    trend: 'Compared with last month',
-    status: 'Watch',
-    statusBg: '#FAEED8',
-    statusFg: '#96702C',
-    color: '#5B54D6',
-    spark: [0.2, 0.3, 0.4, 0.5, 0.55, 0.6],
-  },
+const METRIC_COLORS = [
+  '#5B54D6',
+  '#2F7D6E',
+  '#D8A441',
+  '#3E6E9E',
+  '#C2543D',
+  '#2F7D5D',
+  '#A84A7C',
+  '#5B54D6',
 ];
 
+function statusStyle(status: string): { statusBg: string; statusFg: string } {
+  if (status === 'Healthy') return { statusBg: '#E2F0E9', statusFg: '#2F7D5D' };
+  if (status === 'Watch') return { statusBg: '#FAEED8', statusFg: '#96702C' };
+  return { statusBg: '#F9E7E1', statusFg: '#B04A34' };
+}
+
+/** True for 0%, ₹0, Flat, +0.0%, etc. — spark must stay a flat line. */
+function isZeroMetricValue(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  if (!v || v === 'flat' || v === '—' || v === '-') return true;
+  const numeric = Number(v.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(numeric) && numeric === 0;
+}
+
+function sparkSeries(value: string, score: number): number[] {
+  if (isZeroMetricValue(value)) {
+    return [0, 0, 0, 0, 0, 0];
+  }
+  return [
+    Math.round(score * 0.75),
+    Math.round(score * 0.82),
+    Math.round(score * 0.88),
+    Math.round(score * 0.93),
+    Math.round(score * 0.97),
+    score,
+  ];
+}
+
+/** Mockup SVG polyline spark — `spark(points)` over viewBox 0 0 100 30. */
 function Sparkline({ values, color }: { values: number[]; color: string }) {
-  const max = Math.max(...values);
   const min = Math.min(...values);
+  const max = Math.max(...values);
+  const flat = max === min;
   const span = Math.max(1, max - min);
+  // Flat / zero series → horizontal line through the middle of the chart.
+  const points = values
+    .map((v, i) => {
+      const x = (i / Math.max(1, values.length - 1)) * 100;
+      const y = flat ? 15 : 28 - ((v - min) / span) * 24;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  if (Platform.OS === 'web') {
+    return createElement(
+      'svg',
+      {
+        viewBox: '0 0 100 30',
+        preserveAspectRatio: 'none',
+        style: { width: '100%', height: 34, display: 'block' },
+      },
+      createElement('polyline', {
+        points,
+        fill: 'none',
+        stroke: color,
+        strokeWidth: 2.4,
+        strokeLinejoin: 'round',
+        strokeLinecap: 'round',
+        vectorEffect: 'non-scaling-stroke',
+      }),
+    );
+  }
+
   return (
     <View style={sparkStyles.row}>
-      {values.map((v, i) => (
+      {values.map((_, i) => (
         <View
           key={i}
           style={[
             sparkStyles.bar,
             {
-              height: 6 + ((v - min) / span) * 22,
+              height: flat ? 3 : 6 + ((values[i] - min) / span) * 22,
               backgroundColor: color,
               opacity: i === values.length - 1 ? 1 : 0.45,
             },
@@ -134,6 +114,29 @@ const sparkStyles = StyleSheet.create({
 /** Design HTML `isHealth` — composite financial health score. */
 export default function HealthScreen() {
   const [month, setMonth] = useState(currentYearMonth());
+  const { data: health } = useHealthScore(month);
+
+  const cards = useMemo(() => {
+    return (health?.metrics ?? []).map((m, i) => {
+      const { statusBg, statusFg } = statusStyle(m.status);
+      return {
+        label: m.label,
+        value: m.value,
+        trend: m.trend,
+        status: m.status,
+        statusBg,
+        statusFg,
+        color: METRIC_COLORS[i % METRIC_COLORS.length],
+        spark: sparkSeries(m.value, m.score),
+      };
+    });
+  }, [health?.metrics]);
+
+  const compositeScore = health?.composite_score ?? 0;
+  const { data: dashboardData } = useLifeDashboard(month);
+  const life = dashboardData ?? emptyLifeDashboard(month);
+  const savedTile = life.lifeTiles.find((t) => t.label === 'Saved this month');
+  const monthlySaved = savedTile?.value ?? formatINR(0);
 
   return (
     <ScreenScaffold month={month} onMonthChange={setMonth}>
@@ -141,7 +144,7 @@ export default function HealthScreen() {
         <View style={styles.heroMain}>
           <Text style={styles.heroEyebrow}>Overall health score</Text>
           <View style={styles.scoreRow}>
-            <Text style={[styles.scoreValue, moneyTextStyle]}>58</Text>
+            <Text style={[styles.scoreValue, moneyTextStyle]}>{compositeScore}</Text>
             <Text style={styles.scoreOf}>/ 100</Text>
           </View>
           <Text style={styles.heroNote}>
@@ -152,30 +155,41 @@ export default function HealthScreen() {
         <View style={styles.heroStats}>
           <View>
             <Text style={styles.statLabel}>Net worth</Text>
-            <Text style={[styles.statValue, moneyTextStyle]}>₹72.9 L</Text>
+            <Text style={[styles.statValue, moneyTextStyle]}>{life.netWorth}</Text>
           </View>
           <View>
             <Text style={styles.statLabel}>Monthly saved</Text>
-            <Text style={[styles.statValue, moneyTextStyle]}>+₹2,601</Text>
+            <Text style={[styles.statValue, moneyTextStyle]}>{monthlySaved}</Text>
           </View>
         </View>
       </HeroCard>
 
-      <DesignGrid cols={4} tabletCols={2} narrowCols={1}>
-        {HEALTH_CARDS.map((h) => (
-          <Card key={h.label} style={styles.healthCard}>
-            <View style={styles.healthHeader}>
-              <Text style={styles.healthLabel}>{h.label}</Text>
-              <Text style={[styles.statusChip, { backgroundColor: h.statusBg, color: h.statusFg }]}>
-                {h.status}
-              </Text>
-            </View>
-            <Text style={[styles.healthValue, moneyTextStyle]}>{h.value}</Text>
-            <Sparkline values={h.spark} color={h.color} />
-            <Text style={styles.healthTrend}>{h.trend}</Text>
-          </Card>
-        ))}
-      </DesignGrid>
+      {cards.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>No health metrics yet</Text>
+          <Text style={styles.emptySub}>
+            Add transactions and goals to build your health score.
+          </Text>
+        </View>
+      ) : (
+        <DesignGrid cols={4} tabletCols={2} narrowCols={1}>
+          {cards.map((h) => (
+            <Card key={h.label} style={styles.healthCard}>
+              <View style={styles.healthHeader}>
+                <Text style={styles.healthLabel}>{h.label}</Text>
+                <Text
+                  style={[styles.statusChip, { backgroundColor: h.statusBg, color: h.statusFg }]}
+                >
+                  {h.status}
+                </Text>
+              </View>
+              <Text style={[styles.healthValue, moneyTextStyle]}>{h.value}</Text>
+              <Sparkline values={h.spark} color={h.color} />
+              <Text style={styles.healthTrend}>{h.trend}</Text>
+            </Card>
+          ))}
+        </DesignGrid>
+      )}
     </ScreenScaffold>
   );
 }
@@ -210,7 +224,13 @@ const styles = StyleSheet.create({
   heroStats: { flexDirection: 'row', gap: 22, flexWrap: 'wrap', marginLeft: 'auto' },
   statLabel: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: 'rgba(252,250,247,.5)' },
   statValue: { fontSize: 22, color: colors.heroText, marginTop: 3, letterSpacing: -0.88 },
-  healthCard: { paddingVertical: 20, paddingHorizontal: 22, gap: 10 },
+  healthCard: {
+    paddingTop: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 22,
+    gap: 10,
+    borderRadius: 22,
+  },
   healthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   healthLabel: { flex: 1, fontFamily: fontFamily.bold, fontSize: 12, color: colors.textLabel },
   statusChip: {
@@ -227,5 +247,22 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     color: colors.textPrimary,
   },
-  healthTrend: { fontFamily: fontFamily.medium, fontSize: 11.5, color: colors.textCaption },
+  healthTrend: { fontFamily: fontFamily.medium, fontSize: 11.5, color: '#A39C92' },
+  empty: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#DFD9D0',
+  },
+  emptyTitle: { fontFamily: fontFamily.bold, fontSize: 14, color: '#5C564D' },
+  emptySub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    color: colors.textCaption,
+    marginTop: 5,
+    textAlign: 'center',
+  },
 });

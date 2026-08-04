@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { HeroCard } from '@/components/HeroCard';
@@ -123,12 +123,18 @@ export function DesignSectionHeader({
         {subtitle ? <Text style={styles.sectionSub}>{subtitle}</Text> : null}
       </View>
       {actionLabel && onAction ? (
-        <Text
+        <Pressable
           onPress={onAction}
-          style={[styles.sectionAction, darkAction && styles.sectionActionDark]}
+          style={({ pressed }) => [
+            styles.sectionAction,
+            darkAction && styles.sectionActionDark,
+            pressed && styles.sectionActionPressed,
+          ]}
         >
-          {actionLabel}
-        </Text>
+          <Text style={[styles.sectionActionLabel, darkAction && styles.sectionActionLabelDark]}>
+            {actionLabel}
+          </Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -149,6 +155,7 @@ const styles = StyleSheet.create({
     color: colors.heroTextEyebrow,
   },
   darkValue: {
+    fontFamily: fontFamily.extrabold,
     fontSize: 38,
     color: colors.heroText,
     marginTop: 8,
@@ -184,6 +191,7 @@ const styles = StyleSheet.create({
     color: colors.textLabel,
   },
   iconStatValue: {
+    fontFamily: fontFamily.extrabold,
     fontSize: 26,
     marginTop: 14,
     letterSpacing: -1.04,
@@ -195,8 +203,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   kpi: {
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    paddingVertical: 22,
+    paddingHorizontal: 24,
     gap: 6,
     flex: 1,
     minWidth: 0,
@@ -241,20 +249,28 @@ const styles = StyleSheet.create({
   },
   sectionAction: {
     marginLeft: 'auto',
-    fontFamily: fontFamily.bold,
-    fontSize: 12.5,
-    color: '#453F37',
-    paddingVertical: 10,
+    height: 38,
     paddingHorizontal: 15,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surfaceSubtle,
-    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionActionDark: {
-    color: colors.heroText,
     backgroundColor: colors.textPrimary,
     borderColor: colors.textPrimary,
+  },
+  sectionActionPressed: {
+    opacity: 0.92,
+  },
+  sectionActionLabel: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12.5,
+    color: '#453F37',
+  },
+  sectionActionLabelDark: {
+    color: colors.heroText,
   },
 });

@@ -62,7 +62,12 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   cardPressed: {
-    transform: [{ translateY: -1 }],
+    transform: [{ translateY: -2 }],
+    shadowColor: '#14120F',
+    shadowOpacity: 0.5,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 4,
   },
   cardDisabled: {
     opacity: 0.55,
@@ -85,6 +90,7 @@ const styles = StyleSheet.create({
     color: colors.textLabel,
   },
   value: {
+    fontFamily: fontFamily.extrabold,
     fontSize: 22,
     letterSpacing: -0.04 * 22,
   },

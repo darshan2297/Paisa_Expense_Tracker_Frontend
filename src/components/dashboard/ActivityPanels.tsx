@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 
 import { Card } from '@/components/Card';
-import type { ActivityItem, GoalProgress, UpcomingItem } from '@/mock/dashboard';
+import type { ActivityItem, GoalProgress, UpcomingItem } from '@/features/dashboard/types';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';

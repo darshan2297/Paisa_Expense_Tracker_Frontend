@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -11,9 +10,29 @@ import {
   DesignSectionHeader,
 } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { BILL_FREQS, BILL_KINDS } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalChips,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalSave,
+  ModalTextField,
+  ModalToggleRow,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import {
+  useBills,
+  useCreateBill,
+  useDeleteBill,
+  usePayBill,
+  useToggleBillAuto,
+  useUnpayBill,
+} from '@/features/bills/hooks';
 import type { Bill, BillKind } from '@/features/bills/types';
 import { compact, fmt } from '@/mock/format';
-import { MOCK_BILLS_FULL } from '@/mock/seed/billsFull';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth } from '@/utils/date';
@@ -52,10 +71,33 @@ function dateShort(iso: string): string {
   });
 }
 
+/** Maps the mockup's 13 visual bill types onto the backend's kind enum. */
+const BILL_KIND_TO_API: Record<string, BillKind> = {
+  ELEC: 'electricity',
+  WATER: 'other',
+  GAS: 'gas',
+  NET: 'internet',
+  MOB: 'mobile',
+  CC: 'credit_card',
+  HL: 'other',
+  CL: 'other',
+  PL: 'other',
+  INS: 'other',
+  SIP: 'other',
+  RENT: 'other',
+  CUST: 'other',
+};
+
 /** Design HTML `isBills` — bills view with hero, stats, buckets, and full list. */
 export default function BillsScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const [bills, setBills] = useState(MOCK_BILLS_FULL);
+  const { data } = useBills(month);
+  const payBill = usePayBill(month);
+  const unpayBill = useUnpayBill(month);
+  const toggleBillAuto = useToggleBillAuto(month);
+  const deleteBill = useDeleteBill(month);
+  const [addOpen, setAddOpen] = useState(false);
+  const bills = data ?? [];
 
   const rows = useMemo(() => {
     return bills
@@ -125,23 +167,21 @@ export default function BillsScreen() {
   ];
 
   function togglePaid(id: string) {
-    setBills((prev) =>
-      prev.map((b) => {
-        if (b.id !== id) return b;
-        if (b.paid_on) {
-          return { ...b, paid_on: null, status_label: 'Upcoming' };
-        }
-        return { ...b, paid_on: new Date().toISOString().slice(0, 10), status_label: 'Paid' };
-      }),
-    );
+    const bill = bills.find((b) => b.id === id);
+    if (!bill) return;
+    if (bill.paid_on) {
+      unpayBill.mutate(id);
+    } else {
+      payBill.mutate(id);
+    }
   }
 
   function toggleAuto(id: string) {
-    setBills((prev) => prev.map((b) => (b.id === id ? { ...b, auto_pay: !b.auto_pay } : b)));
+    toggleBillAuto.mutate(id);
   }
 
   function removeBill(id: string) {
-    setBills((prev) => prev.filter((b) => b.id !== id));
+    deleteBill.mutate(id);
   }
 
   return (
@@ -188,7 +228,7 @@ export default function BillsScreen() {
         title="All bills"
         actionLabel="+ Add bill"
         darkAction
-        onAction={() => router.push('/(tabs)/planned')}
+        onAction={() => setAddOpen(true)}
       />
 
       <Card size="large" style={styles.listCard}>
@@ -260,7 +300,117 @@ export default function BillsScreen() {
           ))
         )}
       </Card>
+
+      <AddBillSheet month={month} visible={addOpen} onClose={() => setAddOpen(false)} />
     </ScreenScaffold>
+  );
+}
+
+/** Mockup `bill` modal — "Add bill or reminder". */
+function AddBillSheet({
+  month,
+  visible,
+  onClose,
+}: {
+  month: string;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const createBill = useCreateBill(month);
+  const [amount, setAmount] = useState('');
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState('ELEC');
+  const [leadDays, setLeadDays] = useState('3');
+  const [freq, setFreq] = useState('monthly');
+  const [auto, setAuto] = useState(true);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function reset() {
+    setAmount('');
+    setName('');
+    setKind('ELEC');
+    setLeadDays('3');
+    setFreq('monthly');
+    setAuto(true);
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setError('');
+  }
+
+  function close() {
+    reset();
+    onClose();
+  }
+
+  function submit() {
+    const numericAmount = Number(amount);
+    if (!amount || Number.isNaN(numericAmount) || numericAmount <= 0) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Give this bill a name.');
+      return;
+    }
+    createBill.mutate(
+      {
+        name: name.trim(),
+        kind: BILL_KIND_TO_API[kind] ?? 'other',
+        amount: amount.trim(),
+        due_date: date,
+        frequency: freq as Bill['frequency'],
+        auto_pay: auto,
+        lead_days: Math.min(30, Math.max(0, parseInt(leadDays, 10) || 3)),
+        note: note.trim() || undefined,
+      },
+      {
+        onSuccess: close,
+        onError: () => setError('Could not save that bill. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <Sheet visible={visible} onClose={close} variant="center">
+      <ModalHeader title="Add bill or reminder" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="Bill amount" value={amount} onChangeText={setAmount} />
+        <ModalTextField
+          label="Bill name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Electricity bill"
+        />
+        <ModalChips label="Type" options={BILL_KINDS} value={kind} onChange={setKind} />
+        <ModalTextField
+          label="Remind me this many days before"
+          value={leadDays}
+          onChangeText={setLeadDays}
+          placeholder="0"
+          numeric
+        />
+        <View style={styles.freqBlock}>
+          <ModalChips label="Repeats" options={BILL_FREQS} value={freq} onChange={setFreq} />
+          <ModalToggleRow
+            title="Auto-repeat"
+            sub="Roll the due date forward each time it is paid"
+            value={auto}
+            onToggle={() => setAuto((v) => !v)}
+          />
+        </View>
+        <ModalDateNoteRow
+          dateLabel="Next due date"
+          date={date}
+          onDate={setDate}
+          note={note}
+          onNote={setNote}
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save" onPress={submit} loading={createBill.isPending} />
+      </ModalBody>
+    </Sheet>
   );
 }
 
@@ -348,4 +498,5 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
+  freqBlock: { gap: 8 },
 });

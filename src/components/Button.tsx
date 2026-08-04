@@ -98,14 +98,14 @@ const sizeStyles = StyleSheet.create({
     borderRadius: radius.chip,
   },
   lg: {
-    height: 48,
-    borderRadius: radius.tileSmall,
+    height: 50,
+    borderRadius: radius.cta,
   },
 });
 
 const labelSizeStyles = StyleSheet.create({
-  md: { fontSize: 13 },
-  lg: { fontSize: 14 },
+  md: { fontSize: 13, fontFamily: fontFamily.bold },
+  lg: { fontSize: 14, letterSpacing: -0.14, fontFamily: fontFamily.extrabold },
 });
 
 const variantStyles = StyleSheet.create({

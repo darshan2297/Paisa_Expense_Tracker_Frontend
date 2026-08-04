@@ -40,7 +40,10 @@ export function useCreateFixedCommitment(month: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: FixedCommitmentCreatePayload) => budgetApi.createFixedCommitment(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 
@@ -48,7 +51,10 @@ export function useDeleteFixedCommitment(month: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (commitmentId: string) => budgetApi.deleteFixedCommitment(commitmentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 
@@ -60,6 +66,7 @@ export function useToggleFixedCommitmentPaid(month: string) {
       queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['budget', 'summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
@@ -74,6 +81,9 @@ export function useUpdateFixedCommitment(month: string) {
       commitmentId: string;
       payload: import('./types').FixedCommitmentUpdatePayload;
     }) => budgetApi.updateFixedCommitment(commitmentId, month, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: fixedCommitmentsQueryKey(month) });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }

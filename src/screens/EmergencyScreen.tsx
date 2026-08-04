@@ -5,15 +5,21 @@ import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
 import { DesignKpiCard } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalSave,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import { useContributeToGoal, useEmergencyFund } from '@/features/goals/hooks';
 import { compact, fmt } from '@/mock/format';
-import { MOCK_GOALS } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
-import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
-import { currentYearMonth, formatLongDate } from '@/utils/date';
-
-const TODAY = '2026-08-02';
-const MONTHLY_EXPENSE = 85749;
+import { currentYearMonth } from '@/utils/date';
+import { safeNumber } from '@/utils/numbers';
 
 function ProgressRing({
   size,
@@ -30,6 +36,24 @@ function ProgressRing({
 }) {
   const clamped = Math.min(100, Math.max(0, progress));
   const angle = (clamped / 100) * 360;
+
+  if (clamped <= 0) {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <View
+          style={{
+            position: 'absolute',
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            borderWidth: stroke,
+            borderColor: colors.divider,
+          }}
+        />
+        {children}
+      </View>
+    );
+  }
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -99,15 +123,25 @@ function ProgressRing({
 /** Design HTML `isEmergency` — ring progress, month bars, KPI tiles. */
 export default function EmergencyScreen() {
   const [month, setMonth] = useState(currentYearMonth());
+  const [contributeOpen, setContributeOpen] = useState(false);
+  const [contributeAmount, setContributeAmount] = useState('');
+  const [contributeDate, setContributeDate] = useState(new Date().toISOString().slice(0, 10));
+  const [contributeNote, setContributeNote] = useState('');
+  const [contributeError, setContributeError] = useState('');
+  const { data: emergencyFund } = useEmergencyFund();
+  const contributeToGoal = useContributeToGoal();
 
   const data = useMemo(() => {
-    const ef = MOCK_GOALS.find((g) => g.emergency) ?? MOCK_GOALS[0];
-    const efPct = Math.min(100, (ef.saved / Math.max(1, ef.target)) * 100);
-    const efRem = Math.max(0, ef.target - ef.saved);
-    const efMonths = ef.saved / MONTHLY_EXPENSE;
-    const efMonthsLeft = ef.monthly ? Math.ceil(efRem / ef.monthly) : null;
-    const efEta = new Date(`${TODAY}T00:00:00`);
-    if (efMonthsLeft) efEta.setMonth(efEta.getMonth() + efMonthsLeft);
+    const saved = safeNumber(emergencyFund?.saved);
+    const target = safeNumber(emergencyFund?.target);
+    const monthlyExpense = safeNumber(emergencyFund?.monthly_expense_avg);
+    const efPct = safeNumber(
+      emergencyFund?.pct_complete,
+      target ? Math.min(100, (saved / target) * 100) : 0,
+    );
+    const efRem = Math.max(0, target - saved);
+    const efMonths =
+      emergencyFund?.months_of_expenses_covered ?? (monthlyExpense ? saved / monthlyExpense : 0);
 
     const status =
       efMonths >= 6
@@ -119,12 +153,14 @@ export default function EmergencyScreen() {
     const ringColor = efMonths >= 6 ? colors.success : efMonths >= 3 ? colors.warning : '#EF6B4E';
 
     return {
-      ef,
+      name: 'Emergency fund',
+      goalId: emergencyFund?.goal_id ?? null,
+      saved,
+      target,
+      monthlyExpense,
       efPct,
       efRem,
       efMonths,
-      efMonthsLeft,
-      efEta,
       status,
       ringColor,
       bars: [1, 2, 3, 4, 5, 6].map((m) => ({
@@ -133,74 +169,129 @@ export default function EmergencyScreen() {
         fg: efMonths >= m ? colors.surface : colors.textCaption,
       })),
     };
-  }, []);
+  }, [emergencyFund]);
+
+  function closeContribute() {
+    setContributeOpen(false);
+    setContributeAmount('');
+    setContributeDate(new Date().toISOString().slice(0, 10));
+    setContributeNote('');
+    setContributeError('');
+  }
+
+  function handleContribute() {
+    const amount = safeNumber(contributeAmount);
+    if (!data.goalId) {
+      setContributeError('Create an emergency savings goal first from Savings & Investments.');
+      return;
+    }
+    if (amount <= 0) {
+      setContributeError('Enter an amount greater than zero.');
+      return;
+    }
+    contributeToGoal.mutate(
+      {
+        goalId: data.goalId,
+        payload: { amount: String(amount), note: contributeNote.trim() || undefined },
+      },
+      {
+        onSuccess: closeContribute,
+        onError: () => setContributeError('Could not add that money. Try again.'),
+      },
+    );
+  }
 
   return (
-    <ScreenScaffold month={month} onMonthChange={setMonth}>
-      <DesignGridLead
-        lead={
-          <Card size="large" style={styles.ringCard}>
-            <ProgressRing size={180} stroke={16} progress={data.efPct} color={data.ringColor}>
-              <View style={styles.ringCenter}>
-                <Text style={[styles.ringPct, moneyTextStyle]}>{Math.round(data.efPct)}%</Text>
-                <Text style={styles.ringLabel}>funded</Text>
-              </View>
-            </ProgressRing>
-            <View style={styles.ringCopy}>
-              <View style={styles.titleRow}>
-                <Text style={styles.efName}>{data.ef.name}</Text>
-                <View style={[styles.statusChip, { backgroundColor: data.status.bg }]}>
-                  <Text style={[styles.statusText, { color: data.status.fg }]}>
-                    {data.status.label}
-                  </Text>
+    <>
+      <ScreenScaffold month={month} onMonthChange={setMonth}>
+        <DesignGridLead
+          lead={
+            <Card size="large" style={styles.ringCard}>
+              <ProgressRing size={180} stroke={16} progress={data.efPct} color={data.ringColor}>
+                <View style={styles.ringCenter}>
+                  <Text style={[styles.ringPct, moneyTextStyle]}>{Math.round(data.efPct)}%</Text>
+                  <Text style={styles.ringLabel}>funded</Text>
                 </View>
-              </View>
-              <View style={styles.savedRow}>
-                <Text style={[styles.savedValue, moneyTextStyle]}>{compact(data.ef.saved)}</Text>
-                <Text style={styles.savedOf}>of {compact(data.ef.target)}</Text>
-              </View>
-              <View style={styles.barRow}>
-                {data.bars.map((b) => (
-                  <View key={b.label} style={[styles.monthBar, { backgroundColor: b.bg }]}>
-                    <Text style={[styles.monthBarLabel, { color: b.fg }]}>{b.label}</Text>
+              </ProgressRing>
+              <View style={styles.ringCopy}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.efName}>{data.name}</Text>
+                  <View style={[styles.statusChip, { backgroundColor: data.status.bg }]}>
+                    <Text style={[styles.statusText, { color: data.status.fg }]}>
+                      {data.status.label}
+                    </Text>
                   </View>
-                ))}
+                </View>
+                <View style={styles.savedRow}>
+                  <Text style={[styles.savedValue, moneyTextStyle]}>{compact(data.saved)}</Text>
+                  <Text style={styles.savedOf}>of {compact(data.target)}</Text>
+                </View>
+                <View style={styles.barRow}>
+                  {data.bars.map((b) => (
+                    <View key={b.label} style={[styles.monthBar, { backgroundColor: b.bg }]}>
+                      <Text style={[styles.monthBarLabel, { color: b.fg }]}>{b.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Pressable style={styles.addBtn} onPress={() => setContributeOpen(true)}>
+                  <Text style={styles.addBtnLabel}>Add to emergency fund</Text>
+                </Pressable>
               </View>
-              <Pressable style={styles.addBtn}>
-                <Text style={styles.addBtnLabel}>Add to emergency fund</Text>
-              </Pressable>
-            </View>
-          </Card>
-        }
-        side={
-          <DesignGrid cols={2} tabletCols={2} narrowCols={1}>
-            <DesignKpiCard
-              label="Months covered"
-              value={data.efMonths.toFixed(1)}
-              sub="target is 6 months"
-            />
-            <DesignKpiCard
-              label="Monthly expenses"
-              value={fmt(MONTHLY_EXPENSE)}
-              sub="what one month costs you"
-            />
-            <DesignKpiCard
-              label="Still needed"
-              value={compact(data.efRem)}
-              sub={`saving ${data.ef.monthly ? `${fmt(data.ef.monthly)}/mo` : 'not funded'}`}
-              valueColor={colors.dangerValue}
-            />
-            <DesignKpiCard
-              label="Fully funded by"
-              value={data.efMonthsLeft ? formatLongDate(data.efEta) : 'Add a monthly amount'}
-              backgroundColor="#F1EFFE"
-              borderColor="#E4E1F6"
-              labelColor="#7A73B8"
-            />
-          </DesignGrid>
-        }
-      />
-    </ScreenScaffold>
+            </Card>
+          }
+          side={
+            <DesignGrid cols={2} tabletCols={2} narrowCols={1}>
+              <DesignKpiCard
+                label="Months covered"
+                value={data.efMonths.toFixed(1)}
+                sub="target is 6 months"
+              />
+              <DesignKpiCard
+                label="Monthly expenses"
+                value={fmt(data.monthlyExpense)}
+                sub="what one month costs you"
+              />
+              <DesignKpiCard
+                label="Still needed"
+                value={compact(data.efRem)}
+                sub="saving not funded"
+                valueColor={colors.dangerValue}
+              />
+              <DesignKpiCard
+                label="Fully funded by"
+                value="Add a monthly amount"
+                backgroundColor="#F1EFFE"
+                borderColor="#E4E1F6"
+                labelColor="#7A73B8"
+              />
+            </DesignGrid>
+          }
+        />
+      </ScreenScaffold>
+
+      <Sheet visible={contributeOpen} onClose={closeContribute} variant="center">
+        <ModalHeader title="Add to goal" onClose={closeContribute} />
+        <ModalBody>
+          <ModalAmountField
+            label="Amount to add"
+            value={contributeAmount}
+            onChangeText={setContributeAmount}
+          />
+          <ModalDateNoteRow
+            date={contributeDate}
+            onDate={setContributeDate}
+            note={contributeNote}
+            onNote={setContributeNote}
+          />
+          <ModalError message={contributeError} />
+          <ModalSave
+            label="Add money"
+            onPress={handleContribute}
+            loading={contributeToGoal.isPending}
+          />
+        </ModalBody>
+      </Sheet>
+    </>
   );
 }
 
@@ -275,5 +366,23 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: 13,
     color: colors.surface,
+  },
+  sheetForm: { gap: 12, paddingBottom: 8 },
+  sheetTitle: {
+    fontFamily: fontFamily.extrabold,
+    fontSize: 17,
+    letterSpacing: -0.4,
+    color: colors.textPrimary,
+  },
+  input: {
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
   },
 });

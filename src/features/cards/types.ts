@@ -37,3 +37,12 @@ export type CardAmountPayload = {
   note?: string | null;
   category_id?: string | null;
 };
+
+export type CardPaymentHistoryItem = {
+  id: string;
+  card_id: string;
+  label: string;
+  sub: string;
+  amount: string;
+  date: string;
+};

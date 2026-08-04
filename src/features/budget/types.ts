@@ -15,6 +15,8 @@ export type BudgetSummary = {
   pct_remaining: number;
   per_day_left: string;
   days_remaining_in_month: number;
+  alert_triggered: boolean;
+  over_by: string;
 };
 
 export type FixedCommitmentKind = 'emi' | 'home_loan' | 'personal_loan' | 'subscription' | 'bill';

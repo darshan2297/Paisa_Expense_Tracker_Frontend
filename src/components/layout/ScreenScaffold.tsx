@@ -1,5 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MobileNavPills } from '@/components/layout/MobileNavPills';
@@ -15,6 +16,10 @@ type ScreenScaffoldProps = PropsWithChildren<{
   headerExtra?: ReactNode;
   showMonthControls?: boolean;
 }>;
+
+function defaultAddTransaction() {
+  router.push({ pathname: '/(tabs)/transactions', params: { openAdd: '1' } });
+}
 
 /**
  * Shared page chrome from the design HTML: header, optional mobile nav pills,
@@ -38,13 +43,15 @@ export function ScreenScaffold({
       <ScrollView
         style={styles.screen}
         contentContainerStyle={[styles.content, pad]}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
+        showsHorizontalScrollIndicator
+        {...(Platform.OS === 'web' ? ({ className: 'paisa-thin-scroll' } as object) : null)}
       >
         {showMonthControls ? (
           <PageHeader
             month={month}
             onMonthChange={onMonthChange}
-            onAddTransaction={onAddTransaction}
+            onAddTransaction={onAddTransaction ?? defaultAddTransaction}
           />
         ) : null}
         {isMobile ? <MobileNavPills /> : null}
@@ -68,7 +75,7 @@ const styles = StyleSheet.create({
     gap: 18,
   },
   body: {
-    gap: 16,
+    gap: 14,
   },
 });
 

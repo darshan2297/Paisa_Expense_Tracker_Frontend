@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
-import type { LifeDashboardData } from '@/mock/dashboard';
+import type { LifeDashboardData } from '@/features/dashboard/types';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
@@ -51,13 +51,17 @@ export function SpendingForecastCard({ month, forecast }: SpendingForecastCardPr
       </View>
 
       <View style={styles.miniGrid}>
-        <View style={[styles.miniTile, { width: miniWidth }]}>
-          <Text style={styles.miniLabel}>Safe daily limit</Text>
-          <Text style={[styles.miniValue, moneyTextStyle]}>{forecast.safeDaily}</Text>
+        <View style={[styles.miniCell, { width: miniWidth }]}>
+          <View style={styles.miniTile}>
+            <Text style={styles.miniLabel}>Safe daily limit</Text>
+            <Text style={[styles.miniValue, moneyTextStyle]}>{forecast.safeDaily}</Text>
+          </View>
         </View>
-        <View style={[styles.miniTile, { width: miniWidth }]}>
-          <Text style={styles.miniLabel}>Expected savings</Text>
-          <Text style={[styles.miniValue, moneyTextStyle]}>{forecast.expectedSavings}</Text>
+        <View style={[styles.miniCell, { width: miniWidth }]}>
+          <View style={styles.miniTile}>
+            <Text style={styles.miniLabel}>Expected savings</Text>
+            <Text style={[styles.miniValue, moneyTextStyle]}>{forecast.expectedSavings}</Text>
+          </View>
         </View>
       </View>
 
@@ -150,7 +154,12 @@ const styles = StyleSheet.create({
   miniGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    rowGap: 10,
+    marginHorizontal: -5,
+  },
+  miniCell: {
+    paddingHorizontal: 5,
+    minWidth: 0,
   },
   miniTile: {
     paddingVertical: 12,

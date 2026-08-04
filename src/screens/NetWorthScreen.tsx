@@ -6,8 +6,8 @@ import { HeroCard } from '@/components/HeroCard';
 import { DesignGrid } from '@/components/design/DesignGrid';
 import { DesignKpiCard } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { useNetWorthCurrent, useNetWorthHistory } from '@/features/netWorth/hooks';
 import { compact, pctWidth } from '@/mock/format';
-import { MOCK_ASSETS, MOCK_GOALS, MOCK_INVESTMENTS, MOCK_LOANS } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth, formatMonthYear } from '@/utils/date';
@@ -20,92 +20,42 @@ const RANGES = [
   { months: 61, label: 'All' },
 ] as const;
 
-function emiOf(principal: number, rate: number, tenure: number): number {
-  const r = rate / 1200;
-  if (!r) return principal / tenure;
-  const f = Math.pow(1 + r, tenure);
-  return (principal * r * f) / (f - 1);
-}
-
-function loanOutstanding(l: (typeof MOCK_LOANS)[0], today: string): number {
-  const r = l.rate / 1200;
-  let bal = l.principal;
-  const start = new Date(`${l.start}T00:00:00`);
-  const end = new Date(`${today}T00:00:00`);
-  const paidMonths = Math.min(
-    l.tenure,
-    Math.max(
-      0,
-      (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()),
-    ),
-  );
-  for (let i = 0; i < paidMonths; i++) {
-    const ip = bal * r;
-    const pp = Math.min(bal, emiOf(l.principal, l.rate, l.tenure) - ip);
-    bal = Math.max(0, bal - pp);
-  }
-  return paidMonths >= l.tenure ? 0 : bal;
-}
-
-function buildNetWorthSeries(endMonth: string, count: number) {
-  const portfolio = MOCK_INVESTMENTS.reduce((a, v) => a + v.current, 0);
-  const goalsSaved = MOCK_GOALS.reduce((a, g) => a + g.saved, 0);
-  const assetsTotal = MOCK_ASSETS.reduce((a, x) => a + x.current, 0);
-  const cashTotal = MOCK_ASSETS.filter((a) => a.kind === 'CASH' || a.kind === 'BANK').reduce(
-    (a, x) => a + x.current,
-    0,
-  );
-  const liabilities = MOCK_LOANS.reduce((a, l) => a + loanOutstanding(l, '2026-08-02'), 0);
-
-  const [y, m] = endMonth.split('-').map(Number);
-  const keys: string[] = [];
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(y, m - 1 - i, 1);
-    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-
-  return keys.map((key, idx) => {
-    const back = keys.length - 1 - idx;
-    const wob = 1 + Math.sin(idx * 1.1) * 0.012;
-    const pf = (portfolio / Math.pow(1.0115, back)) * wob;
-    const as = (assetsTotal - cashTotal) / Math.pow(1.0045, back);
-    const cs = ((cashTotal + goalsSaved) / Math.pow(1.009, back)) * wob;
-    const li = liabilities * (1 + back * 0.0055);
-    return {
-      key,
-      net: pf + as + cs - (back === 0 ? liabilities : li),
-    };
-  });
-}
+const PART_COLORS: Record<string, string> = {
+  Portfolio: '#5B54D6',
+  Assets: '#3E6E9E',
+  'Cash & goals': '#2F7D5D',
+  Receivables: '#96702C',
+  Liabilities: '#C2543D',
+};
 
 /** Design HTML `isNet` — net worth hero with chart bars, KPIs, breakdown. */
 export default function NetWorthScreen() {
   const [month, setMonth] = useState(currentYearMonth());
   const [range, setRange] = useState<number>(12);
+  const historyMonths = range === 61 ? 120 : range;
+  const { data: current } = useNetWorthCurrent();
+  const { data: history } = useNetWorthHistory(historyMonths);
 
   const data = useMemo(() => {
-    const portfolio = MOCK_INVESTMENTS.reduce((a, v) => a + v.current, 0);
-    const goalsSaved = MOCK_GOALS.reduce((a, g) => a + g.saved, 0);
-    const assetsTotal = MOCK_ASSETS.reduce((a, x) => a + x.current, 0);
-    const cashTotal = MOCK_ASSETS.filter((a) => a.kind === 'CASH' || a.kind === 'BANK').reduce(
-      (a, x) => a + x.current,
-      0,
-    );
-    const liabilities = MOCK_LOANS.reduce((a, l) => a + loanOutstanding(l, '2026-08-02'), 0);
-    const netWorth = assetsTotal + portfolio + goalsSaved - liabilities;
+    const nwNow = Number(current?.net_worth ?? 0);
+    const liabilities = Number(current?.total_liabilities ?? 0);
+    const monthChange = Number(current?.delta_month ?? 0);
 
-    const series = buildNetWorthSeries(month, 61);
-    const view = series.slice(Math.max(0, series.length - range));
+    const points = history?.points ?? [];
+    const series =
+      points.length > 0
+        ? points.map((p) => ({ key: p.date.slice(0, 7), net: Number(p.net_worth) }))
+        : [{ key: month, net: nwNow }];
+
+    const view = series.slice(Math.max(0, series.length - (range === 61 ? series.length : range)));
     const vals = view.map((p) => p.net);
-    const lo = Math.min(...vals);
-    const hi = Math.max(...vals);
+    const lo = Math.min(...vals, nwNow);
+    const hi = Math.max(...vals, nwNow);
     const span = Math.max(1, hi - lo);
 
-    const nwNow = vals[vals.length - 1] ?? 0;
     const nwPrev = vals[vals.length - 2] ?? nwNow;
-    const yearAgo = series[series.length - 13]?.net ?? vals[0] ?? nwNow;
-    const peak = Math.max(...series.map((s) => s.net));
-    const monthChange = nwNow - nwPrev;
+    const yearAgo = series[Math.max(0, series.length - 13)]?.net ?? vals[0] ?? nwNow;
+    const peak = Math.max(nwNow, ...series.map((s) => s.net));
     const yearChange = nwNow - yearAgo;
 
     const bars = view.map((p, i) => ({
@@ -117,20 +67,24 @@ export default function NetWorthScreen() {
           : '',
     }));
 
-    const nwParts = [
-      { label: 'Portfolio', value: portfolio, color: '#5B54D6' },
-      { label: 'Assets', value: assetsTotal - cashTotal, color: '#3E6E9E' },
-      { label: 'Cash & goals', value: cashTotal + goalsSaved, color: '#2F7D5D' },
-      { label: 'Liabilities', value: liabilities, color: '#C2543D', negative: true },
-    ].map((p) => ({
-      ...p,
-      display: p.negative ? `−${compact(p.value)}` : compact(p.value),
-      width: pctWidth(p.value, netWorth + liabilities),
-    }));
+    const parts = current?.parts ?? [];
+    const netWorth = nwNow + liabilities;
+    const nwParts = parts.map((p) => {
+      const value = Number(p.value);
+      const negative = p.label === 'Liabilities';
+      return {
+        label: p.label,
+        value,
+        color: PART_COLORS[p.label] ?? '#5B54D6',
+        negative,
+        display: negative ? `−${compact(value)}` : compact(value),
+        width: pctWidth(value, netWorth),
+      };
+    });
 
     return {
       nwNow,
-      monthChange,
+      monthChange: current?.delta_month != null ? monthChange : nwNow - nwPrev,
       yearChange,
       yearPct: yearAgo ? ((yearChange / Math.abs(yearAgo)) * 100).toFixed(1) : '0',
       peak,
@@ -138,7 +92,7 @@ export default function NetWorthScreen() {
       bars,
       nwParts,
     };
-  }, [month, range]);
+  }, [current, history, month, range]);
 
   const changePositive = data.monthChange >= 0;
   const yearPositive = data.yearChange >= 0;
@@ -161,17 +115,12 @@ export default function NetWorthScreen() {
                   style={[
                     styles.chip,
                     {
-                      backgroundColor: on ? colors.textPrimary : 'rgba(252,250,247,.08)',
-                      borderColor: on ? colors.textPrimary : 'rgba(252,250,247,.16)',
+                      backgroundColor: on ? colors.textPrimary : '#FBF9F6',
+                      borderColor: on ? colors.textPrimary : '#FBF9F6',
                     },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.chipLabel,
-                      { color: on ? colors.heroText : colors.heroTextMuted },
-                    ]}
-                  >
+                  <Text style={[styles.chipLabel, { color: on ? colors.heroText : '#6B6459' }]}>
                     {r.label}
                   </Text>
                 </Pressable>

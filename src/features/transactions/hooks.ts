@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import type { PickedReceipt } from '@/utils/receiptPicker';
+
 import * as transactionsApi from './api';
 import type { TransactionCreatePayload, TransactionFilters } from './types';
 
@@ -15,27 +17,54 @@ export function useTransactions(filters: TransactionFilters) {
   });
 }
 
-export function useTransactionsSummary(month: string) {
+export function useTransactionsSummary(month: string, cardOnly = false) {
   return useQuery({
-    queryKey: transactionsSummaryQueryKey(month),
-    queryFn: () => transactionsApi.getTransactionsSummary(month),
+    queryKey: cardOnly
+      ? ([...transactionsSummaryQueryKey(month), 'cardOnly'] as const)
+      : transactionsSummaryQueryKey(month),
+    queryFn: () => transactionsApi.getTransactionsSummary(month, cardOnly),
   });
 }
 
-/** Invalidates every cached transactions/summary/budget-summary query
- * (rather than a single key) since a create/delete can shift totals shown
- * on the Overview and Planned screens too, not just the Transactions list.
+/** Invalidates every cached transactions/summary/budget-summary/dashboard
+ * query (rather than a single key) since a create/delete can shift totals
+ * shown on the Life Dashboard, sidebar Budget Left widget, and Planned
+ * screen too, not just the Transactions list.
  */
 function invalidateMoneyQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ['transactions'] });
   queryClient.invalidateQueries({ queryKey: ['budget'] });
   queryClient.invalidateQueries({ queryKey: ['fixedCommitments'] });
+  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
 }
+
+export type CreateTransactionResult = {
+  transaction: Awaited<ReturnType<typeof transactionsApi.createTransaction>>;
+  /** True when the txn was saved but the receipt upload failed. */
+  receiptUploadFailed: boolean;
+};
 
 export function useCreateTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: TransactionCreatePayload) => transactionsApi.createTransaction(payload),
+    mutationFn: async ({
+      payload,
+      receipt,
+    }: {
+      payload: TransactionCreatePayload;
+      receipt?: PickedReceipt | null;
+    }): Promise<CreateTransactionResult> => {
+      const created = await transactionsApi.createTransaction(payload);
+      if (!receipt) {
+        return { transaction: created, receiptUploadFailed: false };
+      }
+      try {
+        const withReceipt = await transactionsApi.uploadReceipt(created.id, receipt);
+        return { transaction: withReceipt, receiptUploadFailed: false };
+      } catch {
+        return { transaction: created, receiptUploadFailed: true };
+      }
+    },
     onSuccess: () => invalidateMoneyQueries(queryClient),
   });
 }

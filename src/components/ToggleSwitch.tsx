@@ -13,6 +13,8 @@ export type ToggleSwitchProps = {
   value: boolean;
   onValueChange: (value: boolean) => void;
   disabled?: boolean;
+  /** Use on auth/onboarding dark cards — light track + violet active state. */
+  variant?: 'default' | 'onDark';
 };
 
 /**
@@ -21,7 +23,25 @@ export type ToggleSwitchProps = {
  * sized/styled to match a specific design). Used for every on/off
  * preference row (dark mode, week-start, round-up, digest, sound).
  */
-export function ToggleSwitch({ value, onValueChange, disabled = false }: ToggleSwitchProps) {
+function trackColor(value: boolean, variant: 'default' | 'onDark', disabled: boolean): string {
+  if (variant === 'onDark') {
+    if (disabled) return value ? 'rgba(124,116,255,.35)' : 'rgba(252,250,247,.14)';
+    return value ? colors.brandGradientStart : 'rgba(252,250,247,.2)';
+  }
+  return value ? colors.accent : colors.border;
+}
+
+function thumbColor(variant: 'default' | 'onDark', disabled: boolean): string {
+  if (variant === 'onDark' && disabled) return 'rgba(252,250,247,.55)';
+  return colors.heroText;
+}
+
+export function ToggleSwitch({
+  value,
+  onValueChange,
+  disabled = false,
+  variant = 'default',
+}: ToggleSwitchProps) {
   // Lazy-initialized so the Animated.Value instance is created exactly once
   // (a plain useRef(...).current access during render trips the React
   // Compiler's "don't touch ref values while rendering" rule).
@@ -44,11 +64,17 @@ export function ToggleSwitch({ value, onValueChange, disabled = false }: ToggleS
       onPress={() => onValueChange(!value)}
       style={[
         styles.track,
-        { backgroundColor: value ? colors.accent : colors.border },
-        disabled && styles.disabled,
+        { backgroundColor: trackColor(value, variant, disabled) },
+        disabled && variant === 'default' && styles.disabled,
       ]}
     >
-      <Animated.View style={[styles.thumb, { transform: [{ translateX }] }]} />
+      <Animated.View
+        style={[
+          styles.thumb,
+          { backgroundColor: thumbColor(variant, disabled) },
+          { transform: [{ translateX }] },
+        ]}
+      />
     </Pressable>
   );
 }
@@ -65,7 +91,6 @@ const styles = StyleSheet.create({
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
-    backgroundColor: colors.surface,
   },
   disabled: {
     opacity: 0.5,

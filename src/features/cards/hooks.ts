@@ -5,6 +5,7 @@ import type { CardAmountPayload, CreditCardCreatePayload } from './types';
 
 export const cardsQueryKey = ['cards'] as const;
 export const cardsSummaryQueryKey = ['cards', 'summary'] as const;
+export const cardsPaymentsQueryKey = ['cards', 'payments'] as const;
 
 export function useCards() {
   return useQuery({ queryKey: cardsQueryKey, queryFn: cardsApi.getCards });
@@ -14,6 +15,15 @@ export function useCardsSummary() {
   return useQuery({ queryKey: cardsSummaryQueryKey, queryFn: cardsApi.getCardsSummary });
 }
 
+export function useCardPayments() {
+  return useQuery({ queryKey: cardsPaymentsQueryKey, queryFn: cardsApi.getCardPayments });
+}
+
+// Card outstanding is a net-worth liability and card spend/creation affects
+// the Life Dashboard + sidebar Budget Left/Net worth widgets - every
+// mutation here must invalidate both, the same class of fix already applied
+// to `features/transactions/hooks.ts` (which was missing this too).
+
 export function useCreateCard() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -21,6 +31,8 @@ export function useCreateCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cardsQueryKey });
       queryClient.invalidateQueries({ queryKey: cardsSummaryQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['netWorth'] });
     },
   });
 }
@@ -33,7 +45,10 @@ export function usePayCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cardsQueryKey });
       queryClient.invalidateQueries({ queryKey: cardsSummaryQueryKey });
+      queryClient.invalidateQueries({ queryKey: cardsPaymentsQueryKey });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['netWorth'] });
     },
   });
 }
@@ -47,6 +62,8 @@ export function useSpendOnCard() {
       queryClient.invalidateQueries({ queryKey: cardsQueryKey });
       queryClient.invalidateQueries({ queryKey: cardsSummaryQueryKey });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['netWorth'] });
     },
   });
 }
@@ -58,6 +75,8 @@ export function useDeleteCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cardsQueryKey });
       queryClient.invalidateQueries({ queryKey: cardsSummaryQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['netWorth'] });
     },
   });
 }

@@ -35,12 +35,18 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     backgroundColor: colors.bg,
+    // Bound the shell to the viewport so the sidebar nav can scroll
+    // (mockup: sticky sidebar at height 100vh with overflow-y: auto).
+    height: '100%',
+    maxHeight: '100%',
     minHeight: '100%',
     alignItems: 'stretch',
+    overflow: 'hidden',
   },
   main: {
     flex: 1,
     minWidth: 0,
+    minHeight: 0,
     backgroundColor: colors.bg,
   },
 });

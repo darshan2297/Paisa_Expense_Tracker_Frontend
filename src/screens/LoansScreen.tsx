@@ -1,50 +1,66 @@
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card } from '@/components/Card';
 import { DesignGrid, DesignGridLead } from '@/components/design/DesignGrid';
 import { DesignKpiCard } from '@/components/design/DesignPrimitives';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { LOAN_KINDS } from '@/components/modal/kinds';
+import {
+  ModalAmountField,
+  ModalBody,
+  ModalChips,
+  ModalDateNoteRow,
+  ModalError,
+  ModalHeader,
+  ModalSave,
+  ModalTextField,
+} from '@/components/modal/ModalForm';
+import { Sheet } from '@/components/Sheet';
+import type { Loan } from '@/features/loans/types';
+import { useCreateLoan, useDeleteLoan, useLoans, useLoansSummary } from '@/features/loans/hooks';
 import { compact, fmt, pctWidth } from '@/mock/format';
-import { MOCK_LOANS } from '@/mock/seed/wealth';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { currentYearMonth } from '@/utils/date';
 
-const TODAY = '2026-08-02';
 const LOAN_LABELS: Record<string, string> = {
   HL: 'Home loan',
   VL: 'Vehicle loan',
   PL: 'Personal loan',
+  OTHER: 'Other loan',
 };
 
-function emiOf(principal: number, rate: number, tenure: number): number {
-  const r = rate / 1200;
-  if (!r) return principal / tenure;
-  const f = Math.pow(1 + r, tenure);
-  return (principal * r * f) / (f - 1);
-}
+const LOAN_COLORS: Record<string, [string, string]> = {
+  HL: ['#E5EEF8', '#3E6E9E'],
+  VL: ['#E7F0EF', '#2F7D6E'],
+  PL: ['#F9E7E1', '#C2543D'],
+  OTHER: ['#F3EFE9', '#8A7F6E'],
+};
 
-function loanState(l: (typeof MOCK_LOANS)[0]) {
-  const emi = emiOf(l.principal, l.rate, l.tenure);
-  const start = new Date(`${l.start}T00:00:00`);
-  const end = new Date(`${TODAY}T00:00:00`);
+function loanState(l: Loan) {
+  const principal = Number(l.principal);
+  const rate = Number(l.rate_pct);
+  const tenure = l.tenure_months;
+  const emi = Number(l.emi);
+  const start = new Date(`${l.start_date}T00:00:00`);
+  const end = new Date();
   const paidMonths = Math.min(
-    l.tenure,
+    tenure,
     Math.max(
       0,
       (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()),
     ),
   );
-  const r = l.rate / 1200;
-  let bal = l.principal;
+  const r = rate / 1200;
+  let bal = principal;
   let prin = 0;
   let int = 0;
   const schedule: { ip: number; pp: number }[] = [];
-  for (let i = 0; i < l.tenure; i++) {
+  for (let i = 0; i < tenure; i++) {
     const ip = bal * r;
     const pp = Math.min(bal, emi - ip);
     schedule.push({ ip, pp });
@@ -54,10 +70,10 @@ function loanState(l: (typeof MOCK_LOANS)[0]) {
     }
     bal = Math.max(0, bal - pp);
   }
-  const outstanding = paidMonths >= l.tenure ? 0 : bal;
-  const remaining = Math.max(0, l.tenure - paidMonths);
-  const endD = new Date(`${l.start}T00:00:00`);
-  endD.setMonth(endD.getMonth() + l.tenure);
+  const outstanding = paidMonths >= tenure ? 0 : Number(l.outstanding);
+  const remaining = Math.max(0, tenure - paidMonths);
+  const endD = new Date(`${l.start_date}T00:00:00`);
+  endD.setMonth(endD.getMonth() + tenure);
   return {
     emi,
     paidMonths,
@@ -73,16 +89,30 @@ function loanState(l: (typeof MOCK_LOANS)[0]) {
 /** Design HTML `isLoans` — outstanding hero, loan cards, amortization detail. */
 export default function LoansScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const [openLoanId, setOpenLoanId] = useState<string | null>(MOCK_LOANS[0]?.id ?? null);
+  const { data: loansData } = useLoans();
+  const { data: summary } = useLoansSummary(month);
+  const [openLoanId, setOpenLoanId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const loansList = loansData ?? summary?.loans ?? [];
+  const activeLoanId = openLoanId ?? loansList[0]?.id ?? null;
   const [prepayExtra, setPrepayExtra] = useState('');
+  const deleteLoan = useDeleteLoan();
+
+  function confirmDeleteLoan(loanId: string) {
+    Alert.alert('Delete this loan?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteLoan.mutate(loanId) },
+    ]);
+  }
 
   const loanStates = useMemo(
     () =>
-      MOCK_LOANS.map((l) => {
+      loansList.map((l) => {
         const st = loanState(l);
-        const done = (st.paidMonths / l.tenure) * 100;
+        const done = (st.paidMonths / l.tenure_months) * 100;
+        const [bg, fg] = LOAN_COLORS[l.kind] ?? ['#E5EEF8', '#3E6E9E'];
         return {
-          l,
+          l: { ...l, bg, fg },
           ...st,
           tag: LOAN_LABELS[l.kind] ?? l.kind,
           outstandingText: compact(st.outstanding),
@@ -95,22 +125,24 @@ export default function LoansScreen() {
           ends: st.endD.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
         };
       }),
-    [],
+    [loansList],
   );
 
   const totals = useMemo(() => {
-    const outstanding = loanStates.reduce((a, x) => a + x.outstanding, 0);
-    const emi = loanStates.reduce((a, x) => a + x.emi, 0);
+    const outstanding = summary
+      ? Number(summary.total_outstanding)
+      : loanStates.reduce((a, x) => a + x.outstanding, 0);
+    const emi = summary ? Number(summary.total_emi) : loanStates.reduce((a, x) => a + x.emi, 0);
     const interest = loanStates.reduce((a, x) => a + x.interestPaid, 0);
     return { outstanding, emi, interest };
-  }, [loanStates]);
+  }, [loanStates, summary]);
 
-  const selected = loanStates.find((x) => x.l.id === openLoanId) ?? loanStates[0];
+  const selected = loanStates.find((x) => x.l.id === activeLoanId) ?? loanStates[0];
 
   const prepay = useMemo(() => {
     if (!selected) return null;
     const extra = parseFloat(prepayExtra) || 0;
-    const r = selected.l.rate / 1200;
+    const r = Number(selected.l.rate_pct) / 1200;
     let bal = selected.outstanding;
     let months = 0;
     let interest = 0;
@@ -129,11 +161,12 @@ export default function LoansScreen() {
       bal2 = bal2 - (selected.emi - ip);
       m2++;
     }
-    const step = Math.max(1, Math.ceil(selected.l.tenure / 24));
-    const maxPay = Math.max(...selected.schedule.map((s) => s.ip + s.pp));
+    const step = Math.max(1, Math.ceil(selected.l.tenure_months / 24));
+    const maxPay = Math.max(...selected.schedule.map((s) => s.ip + s.pp), 1);
     const amort = [];
-    for (let i = 0; i < selected.l.tenure; i += step) {
+    for (let i = 0; i < selected.l.tenure_months; i += step) {
       const s = selected.schedule[i];
+      if (!s) continue;
       amort.push({
         intH: `${((s.ip / maxPay) * 100).toFixed(1)}%`,
         prinH: `${((s.pp / maxPay) * 100).toFixed(1)}%`,
@@ -173,7 +206,7 @@ export default function LoansScreen() {
 
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Your loans</Text>
-        <Pressable style={styles.darkBtn}>
+        <Pressable style={styles.darkBtn} onPress={() => setAddOpen(true)}>
           <Feather name="plus" size={14} color={colors.surface} />
           <Text style={styles.darkBtnLabel}>Add loan</Text>
         </Pressable>
@@ -189,13 +222,24 @@ export default function LoansScreen() {
               <View style={styles.loanCopy}>
                 <Text style={styles.loanName}>{x.l.name}</Text>
                 <Text style={styles.loanSub}>
-                  {x.tag} · {x.l.rate}% p.a. · ends {x.ends}
+                  {x.tag} · {x.l.rate_pct}% p.a. · ends {x.ends}
                 </Text>
               </View>
               <View style={styles.loanOutstanding}>
                 <Text style={styles.loanOutLabel}>Outstanding</Text>
                 <Text style={[styles.loanOutValue, moneyTextStyle]}>{x.outstandingText}</Text>
               </View>
+              <Pressable
+                accessibilityLabel="Delete loan"
+                hitSlop={8}
+                style={styles.loanDeleteBtn}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  confirmDeleteLoan(x.l.id);
+                }}
+              >
+                <Feather name="trash-2" size={15} color={colors.textCaption} />
+              </Pressable>
             </View>
             <View style={styles.barTrack}>
               <View
@@ -318,7 +362,104 @@ export default function LoansScreen() {
           }
         />
       ) : null}
+
+      <AddLoanSheet visible={addOpen} onClose={() => setAddOpen(false)} />
     </ScreenScaffold>
+  );
+}
+
+/** Mockup `loan` modal — "Add loan". */
+function AddLoanSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const createLoan = useCreateLoan();
+  const [amount, setAmount] = useState('');
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState('HL');
+  const [rate, setRate] = useState('');
+  const [tenure, setTenure] = useState('60');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function close() {
+    setAmount('');
+    setName('');
+    setKind('HL');
+    setRate('');
+    setTenure('60');
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setError('');
+    onClose();
+  }
+
+  function submit() {
+    if (!amount || Number(amount) <= 0) {
+      setError('Enter a loan amount greater than zero.');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Give this loan a name.');
+      return;
+    }
+    const months = parseInt(tenure, 10);
+    if (!months || months < 1) {
+      setError('Enter the tenure in months.');
+      return;
+    }
+    createLoan.mutate(
+      {
+        name: name.trim(),
+        // The API loan kinds don't include education loans, so EDU maps to OTHER.
+        kind: kind === 'EDU' ? 'OTHER' : kind,
+        principal: amount.trim(),
+        rate_pct: rate.trim() || '0',
+        tenure_months: months,
+        start_date: date,
+      },
+      {
+        onSuccess: close,
+        onError: () => setError('Could not save that loan. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <Sheet visible={visible} onClose={close} variant="center">
+      <ModalHeader title="Add loan" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="Loan amount" value={amount} onChangeText={setAmount} />
+        <ModalTextField
+          label="Loan name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Home loan"
+        />
+        <ModalChips label="Type" options={LOAN_KINDS} value={kind} onChange={setKind} />
+        <ModalTextField
+          label="Interest rate % p.a."
+          value={rate}
+          onChangeText={setRate}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Tenure in months"
+          value={tenure}
+          onChangeText={setTenure}
+          placeholder="60"
+          numeric
+        />
+        <ModalDateNoteRow
+          dateLabel="Loan start date"
+          date={date}
+          onDate={setDate}
+          note={note}
+          onNote={setNote}
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save" onPress={submit} loading={createLoan.isPending} />
+      </ModalBody>
+    </Sheet>
   );
 }
 
@@ -414,6 +555,9 @@ const styles = StyleSheet.create({
     fontSize: 19,
     letterSpacing: -0.67,
     color: colors.dangerValue,
+  },
+  loanDeleteBtn: {
+    padding: 6,
   },
   barTrack: {
     height: 9,

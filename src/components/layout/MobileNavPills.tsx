@@ -61,8 +61,8 @@ export function MobileNavPills() {
               },
             ]}
           >
-            <Feather name={item.icon} size={15} color={on ? colors.heroText : colors.textMuted} />
-            <Text style={[styles.pillLabel, { color: on ? colors.heroText : colors.textMuted }]}>
+            <Feather name={item.icon} size={15} color={on ? colors.heroText : colors.textSoft} />
+            <Text style={[styles.pillLabel, { color: on ? colors.heroText : colors.textSoft }]}>
               {item.label}
             </Text>
           </Pressable>

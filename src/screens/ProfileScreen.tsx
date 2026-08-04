@@ -10,11 +10,16 @@ import { DesignKpiCard, DesignSectionHeader } from '@/components/design/DesignPr
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
 import { ToggleSwitch } from '@/components/ToggleSwitch';
 import { useLogout } from '@/features/auth/hooks';
+import { useLifeDashboard } from '@/features/dashboard/hooks';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
+import { useGoalsSummary } from '@/features/goals/hooks';
 import { useProfile, useUpdateProfile } from '@/features/profile/hooks';
+import { useTransactionsSummary } from '@/features/transactions/hooks';
 import { useAppLockStore } from '@/stores/appLockStore';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily } from '@/theme/typography';
+import { compactINR, formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
 
 /** Design HTML `isProfile` — Profile & Settings. */
@@ -24,6 +29,14 @@ export default function ProfileScreen() {
   const updateProfile = useUpdateProfile();
   const logout = useLogout();
   const setLocked = useAppLockStore((s) => s.setLocked);
+  const dashboard = useLifeDashboard(month);
+  const summary = useTransactionsSummary(month);
+  const goalsSummary = useGoalsSummary();
+
+  const dash = dashboard.data ?? emptyLifeDashboard(month);
+  const savedThisMonth = Number(summary.data?.net_balance ?? 0);
+  const monthlyBudget = dash.budget > 0 ? formatINR(dash.budget) : '—';
+  const activeGoals = goalsSummary.data?.active_count ?? dash.goals.length;
 
   const p = profile.data;
   const name = p?.name ?? 'Darshan';
@@ -51,8 +64,15 @@ export default function ProfileScreen() {
         </LinearGradient>
         <View style={styles.heroCopy}>
           <Text style={styles.heroName}>{name}</Text>
-          <Text style={styles.heroEmail}>{p?.email ?? 'darshan@example.com'}</Text>
-          <Text style={styles.heroSince}>Member since January 2024</Text>
+          <Text style={styles.heroEmail}>{p?.email ?? '—'}</Text>
+          <Text style={styles.heroSince}>
+            {p?.created_at
+              ? `Member since ${new Date(p.created_at).toLocaleDateString('en-IN', {
+                  month: 'long',
+                  year: 'numeric',
+                })}`
+              : 'Member since —'}
+          </Text>
         </View>
         <Pressable onPress={() => logout.mutate()} style={styles.logoutBtn}>
           <Feather name="log-out" size={15} color={colors.heroText} />
@@ -61,10 +81,13 @@ export default function ProfileScreen() {
       </LinearGradient>
 
       <DesignGrid cols={4} tabletCols={2}>
-        <DesignKpiCard label="Net worth" value="₹72.9 L" />
-        <DesignKpiCard label="This month saved" value="₹2,601" />
-        <DesignKpiCard label="Monthly budget" value="₹55,000" />
-        <DesignKpiCard label="Active goals" value="4" />
+        <DesignKpiCard label="Net worth" value={dash.netWorth} />
+        <DesignKpiCard
+          label="This month saved"
+          value={savedThisMonth > 0 ? compactINR(savedThisMonth) : formatINR(0)}
+        />
+        <DesignKpiCard label="Monthly budget" value={monthlyBudget} />
+        <DesignKpiCard label="Active goals" value={String(activeGoals)} />
       </DesignGrid>
 
       <DesignGridLead
@@ -146,7 +169,7 @@ export default function ProfileScreen() {
             <Text style={styles.prefLabel}>App PIN</Text>
             <Text style={styles.prefSub}>6 digits · required to open Paisa</Text>
           </View>
-          <Pressable style={styles.pinBtn}>
+          <Pressable style={styles.pinBtn} onPress={() => router.push('/lock-setup')}>
             <Text style={styles.pinBtnLabel}>Change PIN</Text>
           </Pressable>
         </View>

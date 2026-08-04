@@ -17,6 +17,10 @@ export const colors = {
   border: '#E9E4DC',
   textPrimary: '#14120F',
   textMuted: '#6B6459',
+  /** Inactive filter chips, secondary nav labels — slightly warmer than `textMuted`. */
+  textSoft: '#7C766D',
+  /** Empty-state headline ink (e.g. "Nothing here yet"). */
+  textEmpty: '#5C564D',
   /** Stat/field label ink (e.g. "Total balance", "Name") — distinct from `textMuted`. */
   textLabel: '#8B857C',
   /** Sub-copy/caption ink — the lightest tier, used for secondary lines under a label/value. */
