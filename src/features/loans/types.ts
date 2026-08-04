@@ -26,3 +26,5 @@ export type LoanCreatePayload = {
   start_date: string;
   outstanding?: string;
 };
+
+export type LoanUpdatePayload = Partial<LoanCreatePayload>;

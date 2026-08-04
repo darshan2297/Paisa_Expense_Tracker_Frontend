@@ -1,9 +1,9 @@
 import { apiClient, type Envelope } from '@/api/client';
 import { currentYearMonth } from '@/utils/date';
 
-import type { Loan, LoanCreatePayload, LoansSummary } from './types';
+import type { Loan, LoanCreatePayload, LoanUpdatePayload, LoansSummary } from './types';
 
-export type { Loan, LoanCreatePayload, LoansSummary };
+export type { Loan, LoanCreatePayload, LoanUpdatePayload, LoansSummary };
 
 export async function getLoans(): Promise<Loan[]> {
   const response = await apiClient.get<Envelope<Loan[]>>('/loans');
@@ -19,6 +19,11 @@ export async function getLoansSummary(month = currentYearMonth()): Promise<Loans
 
 export async function createLoan(payload: LoanCreatePayload): Promise<Loan> {
   const response = await apiClient.post<Envelope<Loan>>('/loans', payload);
+  return response.data.data as Loan;
+}
+
+export async function updateLoan(loanId: string, payload: LoanUpdatePayload): Promise<Loan> {
+  const response = await apiClient.patch<Envelope<Loan>>(`/loans/${loanId}`, payload);
   return response.data.data as Loan;
 }
 

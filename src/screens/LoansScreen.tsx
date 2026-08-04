@@ -20,13 +20,26 @@ import {
 } from '@/components/modal/ModalForm';
 import { Sheet } from '@/components/Sheet';
 import type { Loan } from '@/features/loans/types';
-import { useCreateLoan, useDeleteLoan, useLoans, useLoansSummary } from '@/features/loans/hooks';
+import {
+  useCreateLoan,
+  useDeleteLoan,
+  useLoans,
+  useLoansSummary,
+  useUpdateLoan,
+} from '@/features/loans/hooks';
 import { compact, fmt, pctWidth } from '@/mock/format';
 import { colors } from '@/theme/colors';
 import { radius } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth } from '@/utils/date';
+
+/** Rupee string for form fields — avoid stripping decimals (×100 bug). */
+function rupeeField(raw: string | number): string {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return '0';
+  return String(Number(n.toFixed(2)));
+}
 
 const LOAN_LABELS: Record<string, string> = {
   HL: 'Home loan',
@@ -94,6 +107,7 @@ export default function LoansScreen() {
   const { data: summary } = useLoansSummary(month);
   const [openLoanId, setOpenLoanId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editLoan, setEditLoan] = useState<Loan | null>(null);
   const loansList = loansData ?? summary?.loans ?? [];
   const activeLoanId = openLoanId ?? loansList[0]?.id ?? null;
   const [prepayExtra, setPrepayExtra] = useState('');
@@ -230,9 +244,20 @@ export default function LoansScreen() {
                 <Text style={[styles.loanOutValue, moneyTextStyle]}>{x.outstandingText}</Text>
               </View>
               <Pressable
+                accessibilityLabel="Edit loan"
+                hitSlop={8}
+                style={styles.loanActionBtn}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  setEditLoan(x.l);
+                }}
+              >
+                <Feather name="edit-2" size={15} color={colors.textCaption} />
+              </Pressable>
+              <Pressable
                 accessibilityLabel="Delete loan"
                 hitSlop={8}
-                style={styles.loanDeleteBtn}
+                style={styles.loanActionBtn}
                 onPress={(event) => {
                   event.stopPropagation();
                   confirmDeleteLoan(x.l.id);
@@ -364,6 +389,7 @@ export default function LoansScreen() {
       ) : null}
 
       <AddLoanSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+      <EditLoanSheet loan={editLoan} onClose={() => setEditLoan(null)} />
     </ScreenScaffold>
   );
 }
@@ -463,6 +489,119 @@ function AddLoanSheet({ visible, onClose }: { visible: boolean; onClose: () => v
   );
 }
 
+/** Edit an existing loan — same fields as add, prefilled from the API. */
+function EditLoanSheet({ loan, onClose }: { loan: Loan | null; onClose: () => void }) {
+  return (
+    <Sheet visible={!!loan} onClose={onClose} variant="center">
+      {loan ? <EditLoanForm key={loan.id} loan={loan} onClose={onClose} /> : null}
+    </Sheet>
+  );
+}
+
+function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
+  const updateLoan = useUpdateLoan();
+  const [amount, setAmount] = useState(rupeeField(loan.principal));
+  const [outstanding, setOutstanding] = useState(rupeeField(loan.outstanding));
+  const [name, setName] = useState(loan.name);
+  // UI chips use EDU; API stores OTHER for education/other loans.
+  const [kind, setKind] = useState(loan.kind === 'OTHER' ? 'EDU' : loan.kind);
+  const [rate, setRate] = useState(rupeeField(loan.rate_pct));
+  const [tenure, setTenure] = useState(String(loan.tenure_months));
+  const [date, setDate] = useState(loan.start_date);
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  function submit() {
+    if (!amount || Number(amount) <= 0) {
+      setError('Enter a loan amount greater than zero.');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Give this loan a name.');
+      return;
+    }
+    const months = parseInt(tenure, 10);
+    if (!months || months < 1) {
+      setError('Enter the tenure in months.');
+      return;
+    }
+    const outstandingValue = Number(outstanding);
+    if (!Number.isFinite(outstandingValue) || outstandingValue < 0) {
+      setError('Enter a valid outstanding amount.');
+      return;
+    }
+    if (outstandingValue > Number(amount)) {
+      setError('Outstanding cannot exceed the principal.');
+      return;
+    }
+
+    updateLoan.mutate(
+      {
+        loanId: loan.id,
+        payload: {
+          name: name.trim(),
+          kind: kind === 'EDU' ? 'OTHER' : kind,
+          principal: rupeeField(amount),
+          outstanding: rupeeField(outstandingValue),
+          rate_pct: rate.trim() || '0',
+          tenure_months: months,
+          start_date: date,
+        },
+      },
+      {
+        onSuccess: onClose,
+        onError: () => setError('Could not save changes. Try again.'),
+      },
+    );
+  }
+
+  return (
+    <>
+      <ModalHeader title="Edit loan" onClose={onClose} />
+      <ModalBody>
+        <ModalAmountField label="Loan amount" value={amount} onChangeText={setAmount} />
+        <ModalTextField
+          label="Outstanding"
+          value={outstanding}
+          onChangeText={setOutstanding}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Loan name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Home loan"
+        />
+        <ModalChips label="Type" options={LOAN_KINDS} value={kind} onChange={setKind} />
+        <ModalTextField
+          label="Interest rate % p.a."
+          value={rate}
+          onChangeText={setRate}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Tenure in months"
+          value={tenure}
+          onChangeText={setTenure}
+          placeholder="60"
+          numeric
+        />
+        <ModalDateNoteRow
+          dateLabel="Loan start date"
+          date={date}
+          onDate={setDate}
+          note={note}
+          onNote={setNote}
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save changes" onPress={submit} loading={updateLoan.isPending} />
+      </ModalBody>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   loanHero: {
     borderRadius: radius.cardLarge,
@@ -556,7 +695,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.67,
     color: colors.dangerValue,
   },
-  loanDeleteBtn: {
+  loanActionBtn: {
     padding: 6,
   },
   barTrack: {
