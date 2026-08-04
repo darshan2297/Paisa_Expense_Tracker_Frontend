@@ -133,7 +133,14 @@ export default function CalendarScreen() {
     for (const day of calendar?.days ?? []) {
       if (day.date <= today) continue;
       for (const p of day.planned) {
-        if (p.kind !== 'Goal' && p.kind !== 'Bill' && p.kind !== 'Insurance' && p.kind !== 'EMI') {
+        // Fixed = Planned commitments (home loan EMI, etc.). Loan-table EMIs
+        // are no longer injected by the calendar API.
+        if (
+          p.kind !== 'Goal' &&
+          p.kind !== 'Bill' &&
+          p.kind !== 'Insurance' &&
+          p.kind !== 'Fixed'
+        ) {
           continue;
         }
         items.push({
