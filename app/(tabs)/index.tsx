@@ -1,72 +1,81 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 
-import { StatTile } from '@/components/StatTile';
-import { colors } from '@/theme/colors';
-import { spacing } from '@/theme/spacing';
-import { fontFamily, fontSize } from '@/theme/typography';
-import { compactINR } from '@/utils/currency';
+import {
+  ComingUpCard,
+  GoalProgressCard,
+  RecentActivityCard,
+} from '@/components/dashboard/ActivityPanels';
+import { BudgetAlertBanner } from '@/components/dashboard/BudgetAlertBanner';
+import { LifeMetricsGrid } from '@/components/dashboard/LifeMetricsGrid';
+import { NetWorthHero } from '@/components/dashboard/NetWorthHero';
+import { SpendingForecastCard } from '@/components/dashboard/SpendingForecastCard';
+import { DesignGridLead } from '@/components/design/DesignGrid';
+import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import { emptyLifeDashboard } from '@/features/dashboard/mapLifeDashboard';
+import { useLifeDashboard } from '@/features/dashboard/hooks';
+import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
+import { currentYearMonth } from '@/utils/date';
 
-/**
- * Placeholder dashboard/welcome screen.
- *
- * Static, hard-coded numbers only — this exists to prove out the app shell
- * (navigation, theme, shared components) end to end. Real balances,
- * transactions, etc. arrive with the relevant feature phases.
- */
-export default function DashboardScreen() {
+/** Design HTML `isLife` — Life Dashboard. */
+export default function LifeDashboardScreen() {
+  const [month, setMonth] = useState(currentYearMonth());
+  const [alertDismissed, setAlertDismissed] = useState(false);
+  const { data: dashboardData } = useLifeDashboard(month);
+  const data = dashboardData ?? emptyLifeDashboard(month);
+  const { isMobile } = useResponsiveLayout();
+  const showAlert = data.showBudgetAlert && !alertDismissed;
+
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
+    <ScreenScaffold
+      month={month}
+      onMonthChange={setMonth}
+      headerExtra={
+        showAlert ? (
+          <BudgetAlertBanner
+            title={data.alertTitle}
+            body={data.alertBody}
+            onAdjust={() => router.push('/(tabs)/planned')}
+            onDismiss={() => setAlertDismissed(true)}
+          />
+        ) : null
+      }
     >
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>Welcome to</Text>
-        <Text style={styles.title}>Paisa</Text>
-        <Text style={styles.subtitle}>Your finances, at a glance.</Text>
-      </View>
+      <DesignGridLead
+        stackOnMobile={isMobile}
+        lead={
+          <NetWorthHero
+            netWorth={data.netWorth}
+            delta={data.netWorthDelta}
+            deltaPositive={data.netWorthDeltaPositive}
+            parts={data.nwParts}
+          />
+        }
+        side={<SpendingForecastCard month={month} forecast={data.forecast} />}
+      />
 
-      <View style={styles.tileGrid}>
-        <StatTile label="Total balance" value={compactINR(184320)} sub="Across 3 accounts" />
-        <StatTile
-          label="This month's spend"
-          value={compactINR(42150)}
-          sub="+8% vs last month"
-          subTone="danger"
-        />
-      </View>
-    </ScrollView>
+      <LifeMetricsGrid tiles={data.lifeTiles} />
+
+      <DesignGridLead
+        stackOnMobile={isMobile}
+        lead={
+          <View style={styles.recentCol}>
+            <RecentActivityCard items={data.recent} />
+          </View>
+        }
+        side={
+          <View style={styles.sideStack}>
+            <ComingUpCard items={data.upcoming} windowLabel="next 15 days" />
+            <GoalProgressCard goals={data.goals} />
+          </View>
+        }
+      />
+    </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  content: {
-    padding: spacing.xl,
-    gap: spacing.xl,
-  },
-  header: {
-    gap: spacing.xs,
-  },
-  eyebrow: {
-    fontFamily: fontFamily.medium,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-  },
-  title: {
-    fontFamily: fontFamily.extrabold,
-    fontSize: fontSize.display,
-    color: colors.textPrimary,
-  },
-  subtitle: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.base,
-    color: colors.textMuted,
-  },
-  tileGrid: {
-    gap: spacing.lg,
-  },
+  recentCol: { flex: 1, minWidth: 0 },
+  sideStack: { gap: 14 },
 });

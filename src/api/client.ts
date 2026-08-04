@@ -1,11 +1,41 @@
-import { create as createAxiosClient, isAxiosError } from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import { create as createAxiosClient, isAxiosError, type InternalAxiosRequestConfig } from 'axios';
+
+import { secureStorage } from '@/utils/secureStorage';
 
 /**
- * Key under which the auth access token is persisted in SecureStore.
- * Centralised here so the Auth phase can reuse it without guessing.
+ * Shape of every JSON response from the backend, success or error - see the
+ * backend's docs/API_STANDARDS.md. Feature `api.ts` files should type their
+ * axios calls as `Envelope<T>` and return `response.data.data`.
  */
+export type Envelope<T> = {
+  success: boolean;
+  status_code: number;
+  data: T | null;
+  message: string | null;
+  errors: unknown[] | null;
+};
+
+/** Keys under which the auth token pair is persisted in SecureStore. */
 export const AUTH_TOKEN_KEY = 'paisa.auth.accessToken';
+export const REFRESH_TOKEN_KEY = 'paisa.auth.refreshToken';
+
+export async function getAccessToken(): Promise<string | null> {
+  return secureStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  return secureStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export async function storeTokens(accessToken: string, refreshToken: string): Promise<void> {
+  await secureStorage.setItem(AUTH_TOKEN_KEY, accessToken);
+  await secureStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+export async function clearTokens(): Promise<void> {
+  await secureStorage.deleteItem(AUTH_TOKEN_KEY);
+  await secureStorage.deleteItem(REFRESH_TOKEN_KEY);
+}
 
 /**
  * Shared Axios instance for all API calls.
@@ -13,38 +43,87 @@ export const AUTH_TOKEN_KEY = 'paisa.auth.accessToken';
  * `EXPO_PUBLIC_API_URL` is inlined at build time by Expo (any env var
  * prefixed `EXPO_PUBLIC_` is exposed to client code) — see `.env.example`.
  */
+const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL;
+const isNgrokApi = typeof apiBaseUrl === 'string' && apiBaseUrl.includes('ngrok');
+
 export const apiClient = createAxiosClient({
-  baseURL: process.env.EXPO_PUBLIC_API_URL,
+  baseURL: apiBaseUrl,
   timeout: 15000,
   headers: {
     Accept: 'application/json',
+    // Free ngrok serves an interstitial HTML page unless this header is set.
+    ...(isNgrokApi ? { 'ngrok-skip-browser-warning': '1' } : {}),
   },
 });
 
-// --- Request interceptor -----------------------------------------------
-// TODO(auth-phase): this currently only *reads* whatever token happens to
-// be in SecureStore. Real login/logout/token-refresh wiring lands with the
-// Auth feature; for now there is nothing that ever writes AUTH_TOKEN_KEY.
 apiClient.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+  const token = await getAccessToken();
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`);
   }
   return config;
 });
 
+type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
+
+// A single in-flight refresh is shared across every request that hits a 401
+// at the same time (e.g. several screens fetching on focus at once) - without
+// this, each would independently call /auth/refresh, and refresh tokens are
+// rotated on use, so only the first would actually succeed.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = await getRefreshToken();
+  if (!refreshToken) {
+    return null;
+  }
+  try {
+    // A bare axios instance, not `apiClient` - it must not carry the
+    // (about-to-be-invalid) access token or re-enter these interceptors.
+    const response = await createAxiosClient({
+      baseURL: apiBaseUrl,
+      headers: isNgrokApi ? { 'ngrok-skip-browser-warning': '1' } : undefined,
+    }).post('/auth/refresh', { refresh_token: refreshToken });
+    const pair = response.data.data as { access_token: string; refresh_token: string };
+    await storeTokens(pair.access_token, pair.refresh_token);
+    return pair.access_token;
+  } catch {
+    await clearTokens();
+    return null;
+  }
+}
+
 // --- Response interceptor -----------------------------------------------
-// TODO(auth-phase): on 401 this should attempt a refresh-token flow and
-// retry the original request once; if the refresh also fails it should
-// clear the session (sessionStore) and route to /(auth)/login. For now we
-// just pass the error through untouched.
+// On a 401, attempt exactly one refresh-and-retry. If the refresh itself
+// fails (refresh token also expired/revoked), tokens are cleared and the
+// original error propagates - `useSessionStore`'s consumers react to that
+// via each feature's own error handling; there is no global "log the user
+// out" side effect here beyond clearing the stored tokens, since this
+// module doesn't know about routing (see src/features/auth/hooks.ts for the
+// screen-level reaction, e.g. redirecting to login).
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (isAxiosError(error) && error.response?.status === 401) {
-      // TODO(auth-phase): refresh-token flow goes here.
+  async (error: unknown) => {
+    if (!isAxiosError(error) || error.response?.status !== 401) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    const config = error.config as RetriableConfig | undefined;
+    if (!config || config._retried) {
+      return Promise.reject(error);
+    }
+
+    refreshPromise ??= refreshAccessToken();
+    const newAccessToken = await refreshPromise;
+    refreshPromise = null;
+
+    if (!newAccessToken) {
+      return Promise.reject(error);
+    }
+
+    config._retried = true;
+    config.headers.set('Authorization', `Bearer ${newAccessToken}`);
+    return apiClient.request(config);
   },
 );
 

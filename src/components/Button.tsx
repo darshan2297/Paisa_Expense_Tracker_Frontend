@@ -9,26 +9,35 @@ import {
 } from 'react-native';
 
 import { colors } from '@/theme/colors';
-import { radius, spacing } from '@/theme/spacing';
-import { fontFamily, fontSize } from '@/theme/typography';
+import { radius } from '@/theme/spacing';
+import { fontFamily } from '@/theme/typography';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger';
+/** `onDark` is `primary` inverted — a cream pill for the dark onboarding/auth
+ *  backdrop, where a near-black CTA would disappear into the background. */
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'onDark';
+
+/** `lg` is the full-width CTA that anchors an entire screen (the onboarding
+ *  steps); `md` is the in-card default. */
+export type ButtonSize = 'md' | 'lg';
 
 export type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   label: string;
   variant?: ButtonVariant;
+  size?: ButtonSize;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 /**
- * Shared pill-shaped button primitive. Business screens should compose this
- * rather than styling `Pressable` ad hoc, so the tap target, disabled state
- * and loading state stay consistent app-wide.
+ * Shared button primitive, pixel-matched to the mockup's one true primary
+ * CTA style: a near-black (`#14120F`) pill, NOT the purple accent color —
+ * `colors.accent` is reserved for text links ("See all", etc.) in this
+ * design system, never a solid button fill. See docs/COMPONENT_GUIDE.md.
  */
 export function Button({
   label,
   variant = 'primary',
+  size = 'md',
   loading = false,
   disabled,
   style,
@@ -43,9 +52,10 @@ export function Button({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
+        sizeStyles[size],
         variantStyles[variant],
         isDisabled && styles.disabled,
-        pressed && !isDisabled && styles.pressed,
+        pressed && !isDisabled && pressedStyles[variant],
         style,
       ]}
       {...rest}
@@ -53,49 +63,78 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={textColorFor(variant)} />
       ) : (
-        <Text style={[styles.label, { color: textColorFor(variant) }]}>{label}</Text>
+        <Text style={[styles.label, labelSizeStyles[size], { color: textColorFor(variant) }]}>
+          {label}
+        </Text>
       )}
     </Pressable>
   );
 }
 
 function textColorFor(variant: ButtonVariant) {
-  return variant === 'secondary' ? colors.textPrimary : colors.surface;
+  if (variant === 'secondary' || variant === 'onDark') {
+    return colors.textPrimary;
+  }
+  return colors.surface;
 }
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radius.pill,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
   },
   label: {
-    fontFamily: fontFamily.semibold,
-    fontSize: fontSize.base,
-  },
-  pressed: {
-    opacity: 0.85,
+    fontFamily: fontFamily.bold,
   },
   disabled: {
     opacity: 0.5,
   },
 });
 
+const sizeStyles = StyleSheet.create({
+  md: {
+    height: 42,
+    borderRadius: radius.chip,
+  },
+  lg: {
+    height: 50,
+    borderRadius: radius.cta,
+  },
+});
+
+const labelSizeStyles = StyleSheet.create({
+  md: { fontSize: 13, fontFamily: fontFamily.bold },
+  lg: { fontSize: 14, letterSpacing: -0.14, fontFamily: fontFamily.extrabold },
+});
+
 const variantStyles = StyleSheet.create({
   primary: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.textPrimary,
+    shadowColor: colors.textPrimary,
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   secondary: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   danger: {
-    backgroundColor: colors.danger,
+    backgroundColor: colors.dangerValue,
   },
+  onDark: {
+    backgroundColor: colors.heroText,
+  },
+});
+
+const pressedStyles = StyleSheet.create({
+  primary: { backgroundColor: '#2C2822' },
+  secondary: { backgroundColor: colors.surfaceSubtle },
+  danger: { opacity: 0.9 },
+  onDark: { backgroundColor: colors.surfaceSubtle },
 });
 
 export default Button;

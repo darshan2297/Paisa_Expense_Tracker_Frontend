@@ -1,13 +1,20 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, type PropsWithChildren } from 'react';
-import { StatusBar } from 'react-native';
+import { StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient } from '@/api/queryClient';
+import { AppLockScreen } from '@/features/appLock/AppLockScreen';
+import { hydrateAppLock } from '@/features/appLock/hooks';
+import { hydrateSession } from '@/features/auth/hooks';
+import { useAppLockStore } from '@/stores/appLockStore';
+import { useOnboardingFlowStore } from '@/stores/onboardingFlowStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { colors } from '@/theme/colors';
 import { useAppFonts } from '@/theme/typography';
+import { WebScrollbarStyles } from '@/theme/WebScrollbarStyles';
 
 // Keep the native splash screen up until fonts are ready.
 SplashScreen.preventAutoHideAsync();
@@ -23,14 +30,95 @@ SplashScreen.preventAutoHideAsync();
 function AppThemeProvider({ children }: PropsWithChildren) {
   return (
     <>
+      <WebScrollbarStyles />
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       {children}
     </>
   );
 }
 
+/**
+ * Central routing guard, run once hydration settles. Three rules, in order:
+ *
+ * 1. Not authenticated + not already in (auth) -> send to Register (if
+ *    bootstrap registration is still open) or Login.
+ * 2. Authenticated but no PIN configured yet + not already in onboarding or
+ *    mid-flow on (auth)/register|login -> force /onboarding.
+ * 3. Authenticated + PIN configured + still stuck in (auth) and not mid-flow
+ *    -> send to /(tabs).
+ *
+ * `onboardingFlowStore.inProgress` keeps the guard from yanking the user to
+ * /(tabs) the moment a PIN is saved but before the optional biometric step
+ * finishes — all on the same screen as register/login.
+ */
+function useAuthGuard() {
+  const segments = useSegments();
+  const router = useRouter();
+  const tabSegment = (segments as readonly string[])[1];
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const isSessionHydrating = useSessionStore((state) => state.isHydrating);
+  const registrationOpen = useSessionStore((state) => state.registrationOpen);
+  const hasPinConfigured = useAppLockStore((state) => state.hasPinConfigured);
+  const isAppLockHydrating = useAppLockStore((state) => state.isHydrating);
+  const onboardingInProgress = useOnboardingFlowStore((state) => state.inProgress);
+
+  useEffect(() => {
+    if (isSessionHydrating || isAppLockHydrating) {
+      return;
+    }
+
+    const inAuthGroup = segments[0] === '(auth)';
+    const inOnboardingGroup = segments[0] === 'onboarding';
+
+    if (!isAuthenticated) {
+      if (!inAuthGroup) {
+        router.replace(registrationOpen ? '/(auth)/register' : '/(auth)/login');
+      } else if (!registrationOpen && tabSegment === 'register') {
+        router.replace('/(auth)/login');
+      }
+      return;
+    }
+
+    if (!hasPinConfigured) {
+      if (!inOnboardingGroup && !inAuthGroup) {
+        router.replace('/onboarding');
+      }
+      return;
+    }
+
+    if (inAuthGroup && !onboardingInProgress) {
+      router.replace('/(tabs)');
+    }
+  }, [
+    isAuthenticated,
+    isSessionHydrating,
+    isAppLockHydrating,
+    registrationOpen,
+    hasPinConfigured,
+    onboardingInProgress,
+    tabSegment,
+    segments,
+    router,
+  ]);
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useAppFonts();
+  const segments = useSegments();
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const isAppLockHydrating = useAppLockStore((state) => state.isHydrating);
+  const isLocked = useAppLockStore((state) => state.isLocked);
+
+  const inAuthGroup = segments[0] === '(auth)';
+  const inOnboardingGroup = segments[0] === 'onboarding';
+
+  useEffect(() => {
+    async function boot() {
+      await hydrateSession();
+      await hydrateAppLock();
+    }
+    boot();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -38,22 +126,55 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useAuthGuard();
+
   if (!fontsLoaded && !fontError) {
     // Native splash screen is still visible — render nothing underneath it.
     return null;
   }
 
+  const showAppLock =
+    isAuthenticated && !isAppLockHydrating && isLocked && !inAuthGroup && !inOnboardingGroup;
+
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <AppThemeProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="+not-found" options={{ headerShown: true, title: 'Not found' }} />
-          </Stack>
+          {/*
+            Keep the navigator mounted under the lock overlay. Replacing the
+            entire Stack with AppLockScreen used to destroy navigation state
+            on every lock — after unlock the user lost their place ("focus").
+          */}
+          <View style={styles.root}>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="onboarding" />
+              {/* onboarding/index.tsx — resume PIN setup if the app was closed mid-flow */}
+              <Stack.Screen
+                name="lock-setup"
+                options={{ headerShown: true, title: 'Set up app lock', presentation: 'modal' }}
+              />
+              <Stack.Screen name="+not-found" options={{ headerShown: true, title: 'Not found' }} />
+            </Stack>
+            {showAppLock ? (
+              <View style={styles.lockOverlay} accessibilityViewIsModal>
+                <AppLockScreen />
+              </View>
+            ) : null}
+          </View>
         </AppThemeProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  lockOverlay: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 1000,
+  },
+});

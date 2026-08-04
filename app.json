@@ -34,7 +34,15 @@
         }
       ],
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Paisa to attach receipt photos to transactions.",
+          "cameraPermission": "Allow Paisa to photograph receipts and payment slips."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
