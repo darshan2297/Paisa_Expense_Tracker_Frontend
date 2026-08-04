@@ -59,6 +59,32 @@ function dayDiff(dueIso: string, todayIso: string): number {
   return Math.round((due - today) / 86400000);
 }
 
+/**
+ * Statement → due cycle. When statement_day > due_day (e.g. 20 → 7), the
+ * statement falls in the *previous* month: 20 Jul → 7 Aug, not 20 Aug → 7 Aug.
+ */
+function billingCycleDates(
+  month: string,
+  statementDay: number,
+  dueDay: number,
+): { stmtDate: string; dueDate: string } {
+  const [yearStr, monthStr] = month.split('-');
+  const year = Number(yearStr);
+  const mon = Number(monthStr);
+  const dueDate = `${month}-${String(Math.min(28, dueDay)).padStart(2, '0')}`;
+  let stmtYear = year;
+  let stmtMonth = mon;
+  if (statementDay > dueDay) {
+    stmtMonth = mon - 1;
+    if (stmtMonth < 1) {
+      stmtMonth = 12;
+      stmtYear = year - 1;
+    }
+  }
+  const stmtDate = `${stmtYear}-${String(stmtMonth).padStart(2, '0')}-${String(Math.min(28, statementDay)).padStart(2, '0')}`;
+  return { stmtDate, dueDate };
+}
+
 function utilStyle(pct: number) {
   if (pct > 70) {
     return {
@@ -110,6 +136,7 @@ export default function CardsScreen() {
   const payCard = usePayCard();
   const [addOpen, setAddOpen] = useState(false);
   const [spendCard, setSpendCard] = useState<CreditCard | null>(null);
+  const [payEmiCard, setPayEmiCard] = useState<CreditCard | null>(null);
   const cards = apiCards ?? [];
   // card_only=true: this panel is titled "Category spending on cards" - it
   // must reflect only card-linked transactions, not the whole month's
@@ -144,15 +171,54 @@ export default function CardsScreen() {
       const theme = CARD_THEMES[index % CARD_THEMES.length];
       const limit = Number(card.credit_limit);
       const outstanding = Number(card.outstanding);
+      const emiAmount = Number(card.emi_amount ?? 0);
       const avail = Math.max(0, limit - outstanding);
       const util = limit ? (outstanding / limit) * 100 : 0;
       const u = utilStyle(util);
       const due = cardDueChip(card.due_day, month);
-      const stmtDate = `${month}-${String(Math.min(28, card.statement_day)).padStart(2, '0')}`;
-      const dueDate = `${month}-${String(Math.min(28, card.due_day)).padStart(2, '0')}`;
-      return { card, theme, limit, outstanding, avail, util, u, due, stmtDate, dueDate };
+      const { stmtDate, dueDate } = billingCycleDates(month, card.statement_day, card.due_day);
+      return {
+        card,
+        theme,
+        limit,
+        outstanding,
+        emiAmount,
+        avail,
+        util,
+        u,
+        due,
+        stmtDate,
+        dueDate,
+      };
     });
   }, [cards, month]);
+
+  function confirmPay(card: CreditCard, amount: number, kind: 'full' | 'minimum' | 'emi') {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const labels = {
+      full: 'Pay full amount?',
+      minimum: 'Pay minimum due?',
+      emi: 'Pay EMI?',
+    } as const;
+    confirmDestructive(
+      labels[kind],
+      `Confirm payment of ${formatINR(amount)} toward ${card.bank} ${card.name}.`,
+      () =>
+        payCard.mutate({
+          cardId: card.id,
+          payload: {
+            amount: String(amount),
+            note:
+              kind === 'emi'
+                ? `${card.bank} ${card.name} EMI payment`
+                : kind === 'minimum'
+                  ? `${card.bank} ${card.name} minimum payment`
+                  : `${card.bank} ${card.name} payment`,
+          },
+        }),
+      'Pay now',
+    );
+  }
 
   const cardHistory = useMemo(
     () =>
@@ -233,7 +299,19 @@ export default function CardsScreen() {
       ) : (
         <DesignGrid cols={2} tabletCols={1} narrowCols={1}>
           {cardRows.map(
-            ({ card, theme, limit, outstanding, avail, util, u, due, stmtDate, dueDate }) => (
+            ({
+              card,
+              theme,
+              limit,
+              outstanding,
+              emiAmount,
+              avail,
+              util,
+              u,
+              due,
+              stmtDate,
+              dueDate,
+            }) => (
               <View key={card.id} style={styles.cardColumn}>
                 <LinearGradient
                   colors={[theme[0], theme[1]]}
@@ -290,8 +368,12 @@ export default function CardsScreen() {
                     <DetailStat label="Limit" value={compact(limit)} />
                     <DetailStat label="Available" value={compact(avail)} />
                     <DetailStat label="Minimum due" value={fmt(Number(card.minimum_due))} />
-                    <DetailStat label="Total due" value={fmt(outstanding)} />
+                    <DetailStat label="Outstanding" value={fmt(outstanding)} />
                   </View>
+
+                  {emiAmount > 0 ? (
+                    <Text style={styles.cycleText}>Monthly EMI {fmt(emiAmount)}</Text>
+                  ) : null}
 
                   <Text style={styles.cycleText}>
                     Cycle {dateShort(stmtDate)} → {dateShort(dueDate)}
@@ -305,27 +387,33 @@ export default function CardsScreen() {
                   <View style={styles.payRow}>
                     <Pressable
                       style={styles.payFullBtn}
-                      onPress={() =>
-                        payCard.mutate({
-                          cardId: card.id,
-                          payload: { amount: String(outstanding) },
-                        })
-                      }
+                      onPress={() => confirmPay(card, outstanding, 'full')}
                     >
                       <Text style={styles.payFullText}>Pay full</Text>
                     </Pressable>
                     <Pressable
                       style={styles.payMinBtn}
-                      onPress={() =>
-                        payCard.mutate({
-                          cardId: card.id,
-                          payload: { amount: card.minimum_due },
-                        })
-                      }
+                      onPress={() => confirmPay(card, Number(card.minimum_due), 'minimum')}
                     >
                       <Text style={styles.payMinText}>Pay minimum</Text>
                     </Pressable>
                   </View>
+                  <Pressable
+                    style={styles.payEmiBtn}
+                    onPress={() => {
+                      if (emiAmount > 0) {
+                        confirmPay(card, Math.min(emiAmount, outstanding), 'emi');
+                      } else {
+                        setPayEmiCard(card);
+                      }
+                    }}
+                  >
+                    <Text style={styles.payEmiText}>
+                      {emiAmount > 0
+                        ? `Pay EMI · ${fmt(Math.min(emiAmount, outstanding))}`
+                        : 'Pay EMI'}
+                    </Text>
+                  </Pressable>
                 </Card>
               </View>
             ),
@@ -388,6 +476,14 @@ export default function CardsScreen() {
 
       <AddCardSheet visible={addOpen} onClose={() => setAddOpen(false)} />
       <SpendOnCardSheet card={spendCard} onClose={() => setSpendCard(null)} />
+      <PayEmiSheet
+        card={payEmiCard}
+        onClose={() => setPayEmiCard(null)}
+        onConfirm={(card, amount) => {
+          setPayEmiCard(null);
+          confirmPay(card, amount, 'emi');
+        }}
+      />
     </ScreenScaffold>
   );
 }
@@ -399,6 +495,7 @@ function AddCardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
   const [name, setName] = useState('');
   const [bank, setBank] = useState('');
   const [outstanding, setOutstanding] = useState('0');
+  const [emiAmount, setEmiAmount] = useState('0');
   const [dueDay, setDueDay] = useState('10');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
@@ -409,6 +506,7 @@ function AddCardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
     setName('');
     setBank('');
     setOutstanding('0');
+    setEmiAmount('0');
     setDueDay('10');
     setDate(new Date().toISOString().slice(0, 10));
     setNote('');
@@ -435,6 +533,7 @@ function AddCardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
         last4: '0000',
         credit_limit: limit.trim(),
         outstanding: String(Math.max(0, Number(outstanding) || 0)),
+        emi_amount: String(Math.max(0, Number(emiAmount) || 0)),
         statement_day: due > 15 ? due - 15 : due + 13,
         due_day: due,
         opened_on: date || null,
@@ -457,16 +556,18 @@ function AddCardSheet({ visible, onClose }: { visible: boolean; onClose: () => v
           onChangeText={setName}
           placeholder="e.g. Millennia"
         />
-        <ModalTextField
-          label="Insurer"
-          value={bank}
-          onChangeText={setBank}
-          placeholder="e.g. HDFC Life"
-        />
+        <ModalTextField label="Bank" value={bank} onChangeText={setBank} placeholder="e.g. HDFC" />
         <ModalTextField
           label="Current outstanding"
           value={outstanding}
           onChangeText={setOutstanding}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Monthly EMI (optional)"
+          value={emiAmount}
+          onChangeText={setEmiAmount}
           placeholder="0"
           numeric
         />
@@ -544,11 +645,64 @@ function SpendOnCardSheet({ card, onClose }: { card: CreditCard | null; onClose:
         <ModalDateNoteRow date={date} onDate={setDate} note={note} onNote={setNote} />
         {card ? (
           <ModalInfoNote
-            text={`Adds to ${card.bank} ${card.name} · outstanding goes up and it is logged as an expense.`}
+            text={`Charges ${card.bank} ${card.name} — unpaid. Outstanding goes up; cash is not deducted until you pay.`}
           />
         ) : null}
         <ModalError message={error} />
         <ModalSave label="Add to card" onPress={submit} loading={spendOnCard.isPending} />
+      </ModalBody>
+    </Sheet>
+  );
+}
+
+/** Enter EMI amount when the card has no saved monthly EMI. */
+function PayEmiSheet({
+  card,
+  onClose,
+  onConfirm,
+}: {
+  card: CreditCard | null;
+  onClose: () => void;
+  onConfirm: (card: CreditCard, amount: number) => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [error, setError] = useState('');
+
+  function close() {
+    setAmount('');
+    setError('');
+    onClose();
+  }
+
+  function submit() {
+    if (!card) return;
+    const value = Number(amount);
+    const outstanding = Number(card.outstanding);
+    if (!Number.isFinite(value) || value <= 0) {
+      setError('Enter an EMI amount greater than zero.');
+      return;
+    }
+    if (value > outstanding) {
+      setError(`EMI cannot exceed outstanding (${formatINR(outstanding)}).`);
+      return;
+    }
+    onConfirm(card, value);
+    setAmount('');
+    setError('');
+  }
+
+  return (
+    <Sheet visible={!!card} onClose={close} variant="center">
+      <ModalHeader title="Pay EMI" onClose={close} />
+      <ModalBody>
+        <ModalAmountField label="EMI amount" value={amount} onChangeText={setAmount} />
+        {card ? (
+          <ModalInfoNote
+            text={`Pays this EMI toward ${card.bank} ${card.name}. Outstanding reduces by that amount only — not the full spend.`}
+          />
+        ) : null}
+        <ModalError message={error} />
+        <ModalSave label="Continue" onPress={submit} />
       </ModalBody>
     </Sheet>
   );
@@ -720,6 +874,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   payMinText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: '#453F37' },
+  payEmiBtn: {
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  payEmiText: { fontFamily: fontFamily.bold, fontSize: 12.5, color: colors.accent },
   panel: { paddingVertical: 22, paddingHorizontal: 24, gap: 14 },
   panelTitle: {
     fontFamily: fontFamily.extrabold,

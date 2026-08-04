@@ -67,11 +67,18 @@ const KIND_LABELS: Record<FixedCommitmentKind, string> = {
   bill: 'Bill',
 };
 
-/** Whole-rupee string — API may return `"0.00"`. */
+/**
+ * Parse a rupee amount from API (`"4131.00"`) or user input (`"2,00.50"`).
+ * Must NOT strip the decimal point — doing so turned `"4131.00"` into `"413100"`.
+ */
 function normalizeAmount(raw: string): string {
-  const digits = String(raw ?? '').replace(/[^0-9]/g, '');
-  if (!digits) return '0';
-  return String(parseInt(digits, 10));
+  const cleaned = String(raw ?? '')
+    .replace(/,/g, '')
+    .replace(/[^\d.]/g, '');
+  if (!cleaned || cleaned === '.') return '0';
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n < 0) return '0';
+  return String(Number(n.toFixed(2)));
 }
 
 function thresholdNote(

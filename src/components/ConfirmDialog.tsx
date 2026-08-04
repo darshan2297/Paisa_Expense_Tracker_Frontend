@@ -29,11 +29,17 @@ export function ConfirmDialogHost() {
   return (
     <Sheet visible={visible} onClose={onCancel} variant="center">
       <View style={styles.body}>
-        <View style={styles.iconWrap}>
+        <View style={[styles.iconWrap, request?.confirmLabel === 'Pay now' && styles.iconWrapPay]}>
           <Feather
-            name={request?.confirmLabel === 'Sign out' ? 'log-out' : 'trash-2'}
+            name={
+              request?.confirmLabel === 'Sign out'
+                ? 'log-out'
+                : request?.confirmLabel === 'Pay now'
+                  ? 'credit-card'
+                  : 'trash-2'
+            }
             size={22}
-            color={colors.dangerValue}
+            color={request?.confirmLabel === 'Pay now' ? colors.accent : colors.dangerValue}
           />
         </View>
         <Text style={styles.title}>{request?.title ?? 'Delete?'}</Text>
@@ -42,7 +48,7 @@ export function ConfirmDialogHost() {
           <Button label="Cancel" variant="secondary" onPress={onCancel} style={styles.actionBtn} />
           <Button
             label={request?.confirmLabel ?? 'Delete'}
-            variant="danger"
+            variant={request?.confirmLabel === 'Pay now' ? 'primary' : 'danger'}
             onPress={onConfirm}
             style={styles.actionBtn}
           />
@@ -69,6 +75,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
+  },
+  iconWrapPay: {
+    backgroundColor: colors.accentTint,
+    borderColor: '#E4E1F6',
   },
   title: {
     fontFamily: fontFamily.extrabold,

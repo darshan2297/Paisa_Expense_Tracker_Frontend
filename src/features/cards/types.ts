@@ -6,6 +6,7 @@ export type CreditCard = {
   last4: string;
   credit_limit: string;
   outstanding: string;
+  emi_amount: string;
   statement_day: number;
   due_day: number;
   opened_on: string | null;
@@ -27,6 +28,7 @@ export type CreditCardCreatePayload = {
   last4: string;
   credit_limit: string;
   outstanding?: string;
+  emi_amount?: string;
   statement_day: number;
   due_day: number;
   opened_on?: string | null;

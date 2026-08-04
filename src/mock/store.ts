@@ -304,6 +304,7 @@ class MockStore {
       last4: payload.last4,
       credit_limit: payload.credit_limit,
       outstanding: payload.outstanding ?? '0',
+      emi_amount: payload.emi_amount ?? '0',
       statement_day: payload.statement_day,
       due_day: payload.due_day,
       opened_on: payload.opened_on ?? null,
