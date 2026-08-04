@@ -8,6 +8,8 @@ export type Loan = {
   start_date: string;
   outstanding: string;
   emi: string;
+  paid_months?: number;
+  remaining_months?: number;
 };
 
 export type LoansSummary = {
@@ -27,4 +29,6 @@ export type LoanCreatePayload = {
   outstanding?: string;
 };
 
-export type LoanUpdatePayload = Partial<LoanCreatePayload>;
+export type LoanUpdatePayload = Partial<LoanCreatePayload> & {
+  outstanding?: string;
+};

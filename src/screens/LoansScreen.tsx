@@ -15,6 +15,7 @@ import {
   ModalDateNoteRow,
   ModalError,
   ModalHeader,
+  ModalInfoNote,
   ModalSave,
   ModalTextField,
 } from '@/components/modal/ModalForm';
@@ -59,40 +60,41 @@ function loanState(l: Loan) {
   const principal = Number(l.principal);
   const rate = Number(l.rate_pct);
   const tenure = l.tenure_months;
-  const emi = Number(l.emi);
+  const outstanding = Number(l.outstanding);
   const start = new Date(`${l.start_date}T00:00:00`);
   const end = new Date();
-  const paidMonths = Math.min(
+  const paidFromDates = Math.min(
     tenure,
     Math.max(
       0,
       (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()),
     ),
   );
+  const paidMonths = l.paid_months ?? paidFromDates;
+  const remaining = l.remaining_months ?? Math.max(0, tenure - paidMonths);
+  // Current EMI is based on outstanding + remaining term (API). After rate
+  // changes, replaying the original schedule from principal is meaningless.
+  const emi = Number(l.emi);
   const r = rate / 1200;
-  let bal = principal;
-  let prin = 0;
-  let int = 0;
+  let bal = outstanding;
   const schedule: { ip: number; pp: number }[] = [];
-  for (let i = 0; i < tenure; i++) {
+  for (let i = 0; i < remaining; i++) {
     const ip = bal * r;
-    const pp = Math.min(bal, emi - ip);
+    const pp = Math.min(bal, Math.max(0, emi - ip));
     schedule.push({ ip, pp });
-    if (i < paidMonths) {
-      prin += pp;
-      int += ip;
-    }
     bal = Math.max(0, bal - pp);
   }
-  const outstanding = paidMonths >= tenure ? 0 : Number(l.outstanding);
-  const remaining = Math.max(0, tenure - paidMonths);
-  const endD = new Date(`${l.start_date}T00:00:00`);
-  endD.setMonth(endD.getMonth() + tenure);
+  const principalPaid = Math.max(0, principal - outstanding);
+  // Interest already paid cannot be reconstructed after multiple rate changes
+  // without a full rate history — show a lower-bound estimate from repaid principal.
+  const interestPaid = Math.max(0, paidMonths * emi - principalPaid);
+  const endD = new Date();
+  endD.setMonth(endD.getMonth() + remaining);
   return {
     emi,
     paidMonths,
-    principalPaid: prin,
-    interestPaid: int,
+    principalPaid,
+    interestPaid,
     outstanding,
     schedule,
     remaining,
@@ -123,7 +125,8 @@ export default function LoansScreen() {
     () =>
       loansList.map((l) => {
         const st = loanState(l);
-        const done = (st.paidMonths / l.tenure_months) * 100;
+        const totalSpan = Math.max(1, st.paidMonths + st.remaining);
+        const done = (st.paidMonths / totalSpan) * 100;
         const [bg, fg] = LOAN_COLORS[l.kind] ?? ['#E5EEF8', '#3E6E9E'];
         return {
           l: { ...l, bg, fg },
@@ -498,6 +501,22 @@ function EditLoanSheet({ loan, onClose }: { loan: Loan | null; onClose: () => vo
   );
 }
 
+function estimateEmi(balance: number, annualRate: number, months: number): number {
+  if (!Number.isFinite(balance) || balance <= 0 || months <= 0) return 0;
+  const r = annualRate / 1200;
+  if (r === 0) return balance / months;
+  const factor = Math.pow(1 + r, months);
+  return (balance * r * factor) / (factor - 1);
+}
+
+function paidMonthsFor(startDate: string, tenureMonths: number): number {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date();
+  const months =
+    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  return Math.min(tenureMonths, Math.max(0, months));
+}
+
 function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
   const updateLoan = useUpdateLoan();
   const [amount, setAmount] = useState(rupeeField(loan.principal));
@@ -506,10 +525,19 @@ function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
   // UI chips use EDU; API stores OTHER for education/other loans.
   const [kind, setKind] = useState(loan.kind === 'OTHER' ? 'EDU' : loan.kind);
   const [rate, setRate] = useState(rupeeField(loan.rate_pct));
-  const [tenure, setTenure] = useState(String(loan.tenure_months));
+  const paidMonths = loan.paid_months ?? paidMonthsFor(loan.start_date, loan.tenure_months);
+  const [remaining, setRemaining] = useState(
+    String(loan.remaining_months ?? Math.max(1, loan.tenure_months - paidMonths)),
+  );
   const [date, setDate] = useState(loan.start_date);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+
+  const previewEmi = estimateEmi(
+    Number(outstanding),
+    Number(rate) || 0,
+    parseInt(remaining, 10) || 0,
+  );
 
   function submit() {
     if (!amount || Number(amount) <= 0) {
@@ -520,9 +548,9 @@ function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
       setError('Give this loan a name.');
       return;
     }
-    const months = parseInt(tenure, 10);
-    if (!months || months < 1) {
-      setError('Enter the tenure in months.');
+    const remainingMonths = parseInt(remaining, 10);
+    if (!remainingMonths || remainingMonths < 1) {
+      setError('Enter remaining months (e.g. 97).');
       return;
     }
     const outstandingValue = Number(outstanding);
@@ -535,6 +563,10 @@ function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
       return;
     }
 
+    const paidNow = paidMonthsFor(date, loan.tenure_months);
+    // Persist remaining by setting total tenure = months already paid + remaining.
+    const tenureMonths = paidNow + remainingMonths;
+
     updateLoan.mutate(
       {
         loanId: loan.id,
@@ -544,7 +576,7 @@ function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
           principal: rupeeField(amount),
           outstanding: rupeeField(outstandingValue),
           rate_pct: rate.trim() || '0',
-          tenure_months: months,
+          tenure_months: tenureMonths,
           start_date: date,
         },
       },
@@ -559,9 +591,9 @@ function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
     <>
       <ModalHeader title="Edit loan" onClose={onClose} />
       <ModalBody>
-        <ModalAmountField label="Loan amount" value={amount} onChangeText={setAmount} />
+        <ModalAmountField label="Original loan amount" value={amount} onChangeText={setAmount} />
         <ModalTextField
-          label="Outstanding"
+          label="Current outstanding"
           value={outstanding}
           onChangeText={setOutstanding}
           placeholder="0"
@@ -575,18 +607,21 @@ function EditLoanForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
         />
         <ModalChips label="Type" options={LOAN_KINDS} value={kind} onChange={setKind} />
         <ModalTextField
-          label="Interest rate % p.a."
+          label="Current interest rate % p.a."
           value={rate}
           onChangeText={setRate}
           placeholder="0"
           numeric
         />
         <ModalTextField
-          label="Tenure in months"
-          value={tenure}
-          onChangeText={setTenure}
-          placeholder="60"
+          label="Remaining months"
+          value={remaining}
+          onChangeText={setRemaining}
+          placeholder="97"
           numeric
+        />
+        <ModalInfoNote
+          text={`EMI from outstanding + remaining term + current rate ≈ ${fmt(previewEmi)}. After rate changes, enter remaining months (not original tenure).`}
         />
         <ModalDateNoteRow
           dateLabel="Loan start date"
