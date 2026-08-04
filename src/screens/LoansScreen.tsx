@@ -279,7 +279,7 @@ export default function LoansScreen() {
             </View>
             <View style={styles.loanMeta}>
               <Text style={styles.loanMetaText}>{x.pct} repaid</Text>
-              <Text style={styles.loanMetaText}>Principal {x.principalPaidText}</Text>
+              <Text style={styles.loanMetaText}>Principal paid {x.principalPaidText}</Text>
               <Text style={styles.loanMetaText}>Interest {x.interestPaidText}</Text>
               <Text style={styles.loanMetaText}>EMI {x.emiText}</Text>
               <Text style={[styles.loanMetaText, styles.loanMetaRight]}>
