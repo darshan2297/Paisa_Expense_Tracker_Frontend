@@ -48,6 +48,7 @@ import type {
 import { useAppLockStore } from '@/stores/appLockStore';
 import { colors } from '@/theme/colors';
 import { fontFamily } from '@/theme/typography';
+import { confirmDestructive } from '@/utils/confirm';
 import { currentYearMonth, formatBytes, formatRelativeDateTime } from '@/utils/date';
 
 const LOGIN_HISTORY_PAGE_SIZE = 8;
@@ -707,7 +708,16 @@ export default function SecurityScreen() {
                   This device
                 </Text>
               ) : (
-                <Pressable onPress={() => revokeSession.mutate(s.id)}>
+                <Pressable
+                  onPress={() =>
+                    confirmDestructive(
+                      'Sign out this device?',
+                      'That session will need to log in again.',
+                      () => revokeSession.mutate(s.id),
+                      'Sign out',
+                    )
+                  }
+                >
                   <Text
                     style={[
                       styles.sessionChip,

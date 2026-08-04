@@ -1,11 +1,11 @@
-import { Alert, Platform } from 'react-native';
+import { useConfirmStore } from '@/stores/confirmStore';
 
 /**
- * Cross-platform destructive confirm.
+ * Open the shared in-app delete/confirm modal.
  *
- * `Alert.alert` is a no-op on react-native-web, so delete flows that only
- * call Alert never run their `onPress` on the browser. Use this helper
- * everywhere a delete (or other destructive action) needs confirmation.
+ * Mandatory before every destructive mutation (delete transaction, bill,
+ * ledger entry, card, loan, etc.). Do not call delete APIs directly from
+ * trash/remove handlers — always go through this helper first.
  */
 export function confirmDestructive(
   title: string,
@@ -13,15 +13,10 @@ export function confirmDestructive(
   onConfirm: () => void,
   confirmLabel = 'Delete',
 ): void {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) {
-      onConfirm();
-    }
-    return;
-  }
-
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
-  ]);
+  useConfirmStore.getState().open({
+    title,
+    message,
+    confirmLabel,
+    onConfirm,
+  });
 }

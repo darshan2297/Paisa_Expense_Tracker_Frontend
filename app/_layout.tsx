@@ -6,6 +6,7 @@ import { StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient } from '@/api/queryClient';
+import { ConfirmDialogHost } from '@/components/ConfirmDialog';
 import { AppLockScreen } from '@/features/appLock/AppLockScreen';
 import { hydrateAppLock } from '@/features/appLock/hooks';
 import { hydrateSession } from '@/features/auth/hooks';
@@ -162,6 +163,7 @@ export default function RootLayout() {
                 <AppLockScreen />
               </View>
             ) : null}
+            <ConfirmDialogHost />
           </View>
         </AppThemeProvider>
       </SafeAreaProvider>
