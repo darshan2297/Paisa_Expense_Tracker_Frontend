@@ -20,9 +20,9 @@ Switching to production requires **only env changes** + rebuild — no code chan
 
 ## Variables
 
-| Variable              | Dev (`.env.example`)           | Prod                                       |
-| --------------------- | ------------------------------ | ------------------------------------------ |
-| `EXPO_PUBLIC_API_URL` | `http://localhost:8001/api/v1` | `https://your-backend.onrender.com/api/v1` |
+| Variable              | Dev (`.env.example`)           | Prod                                                        |
+| --------------------- | ------------------------------ | ----------------------------------------------------------- |
+| `EXPO_PUBLIC_API_URL` | `http://localhost:8001/api/v1` | `https://paisa-expense-tracker-backend.onrender.com/api/v1` |
 
 Auth tokens are handled via `expo-secure-store` at runtime (not env vars).
 
