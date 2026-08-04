@@ -148,14 +148,21 @@ export default function ReportsScreen() {
 
             {chart.length > 0 ? (
               <View style={styles.chartArea}>
-                {chart.map((b) => (
-                  <View key={b.label} style={styles.chartCol}>
-                    <View
-                      style={[styles.chartBar, { height: b.height, backgroundColor: b.color }]}
-                    />
-                    <Text style={styles.chartLabel}>{b.label}</Text>
-                  </View>
-                ))}
+                {chart.map((b) => {
+                  const barHeight = Math.max(8, Math.min(140, Number(b.height) || 0));
+                  return (
+                    <View key={b.label} style={styles.chartCol}>
+                      <View style={styles.chartTrack}>
+                        <View
+                          style={[styles.chartBar, { height: barHeight, backgroundColor: b.color }]}
+                        />
+                      </View>
+                      <Text style={styles.chartLabel} numberOfLines={1}>
+                        {b.label}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
 
@@ -255,7 +262,7 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: colors.textCaption,
   },
-  summaryGrid: { marginTop: 22 },
+  summaryGrid: { marginTop: 22, marginBottom: 8 },
   summaryTile: {
     padding: 16,
     borderRadius: 18,
@@ -268,15 +275,28 @@ const styles = StyleSheet.create({
   summaryValue: { fontFamily: fontFamily.extrabold, fontSize: 21, letterSpacing: -0.84 },
   chartArea: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'stretch',
     gap: 12,
-    height: 180,
-    marginTop: 26,
-    paddingBottom: 26,
+    marginTop: 20,
+    marginBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 18,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSubtle,
+    overflow: 'hidden',
   },
-  chartCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
+  chartCol: {
+    flex: 1,
+    maxWidth: 72,
+    alignItems: 'center',
+    gap: 8,
+  },
+  chartTrack: {
+    width: '100%',
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
   chartBar: {
     width: '100%',
     maxWidth: 44,
@@ -286,15 +306,16 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 3,
   },
   chartLabel: {
-    position: 'absolute',
-    bottom: -22,
     fontFamily: fontFamily.bold,
     fontSize: 11,
     color: '#948E85',
+    textAlign: 'center',
+    width: '100%',
   },
   tableHead: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 8,
     paddingVertical: 11,
     borderBottomWidth: 1.5,
     borderBottomColor: colors.border,
