@@ -2,6 +2,17 @@ import type { Category } from '@/features/categories/types';
 
 export type TransactionType = 'expense' | 'income';
 
+export type PaymentMethod = 'cash' | 'upi' | 'card' | 'netbanking' | 'cheque' | 'other';
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  upi: 'UPI',
+  card: 'Card',
+  netbanking: 'Net banking',
+  cheque: 'Cheque',
+  other: 'Other',
+};
+
 export type Transaction = {
   id: string;
   account_id: string;
@@ -14,6 +25,7 @@ export type Transaction = {
   currency: string;
   date: string; // "YYYY-MM-DD"
   note: string | null;
+  payment_method?: PaymentMethod | null;
   category: Category;
   created_at: string;
   has_receipt?: boolean;
@@ -50,6 +62,7 @@ export type TransactionCreatePayload = {
   amount: string;
   date: string;
   note?: string | null;
+  payment_method?: PaymentMethod | null;
 };
 
 export type TransactionFilters = {

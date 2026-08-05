@@ -16,6 +16,8 @@ import { Button } from '@/components/Button';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { DateField } from '@/components/DateField';
 import { ScreenScaffold } from '@/components/layout/ScreenScaffold';
+import type { KindOption } from '@/components/modal/kinds';
+import { ModalChips } from '@/components/modal/ModalForm';
 import { Sheet } from '@/components/Sheet';
 import { TransactionRow } from '@/components/TransactionRow';
 import { useCategories } from '@/features/categories/hooks';
@@ -25,7 +27,8 @@ import {
   useDeleteTransaction,
   useTransactions,
 } from '@/features/transactions/hooks';
-import type { Transaction, TransactionType } from '@/features/transactions/types';
+import type { PaymentMethod, Transaction, TransactionType } from '@/features/transactions/types';
+import { PAYMENT_METHOD_LABELS } from '@/features/transactions/types';
 import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, fontSize } from '@/theme/typography';
@@ -45,6 +48,19 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'income', label: 'Income' },
   { key: 'expense', label: 'Expense' },
 ];
+
+const PAYMENT_METHOD_COLORS: Record<PaymentMethod, string> = {
+  cash: '#96702C',
+  upi: '#5B54D6',
+  card: '#3E6E9E',
+  netbanking: '#2F7D5D',
+  cheque: '#8A7F6E',
+  other: '#A79E92',
+};
+
+const PAYMENT_METHODS: KindOption[] = (
+  Object.entries(PAYMENT_METHOD_LABELS) as [PaymentMethod, string][]
+).map(([id, label]) => ({ id, label, color: PAYMENT_METHOD_COLORS[id] }));
 
 type TransactionGroup = {
   date: string;
@@ -229,6 +245,7 @@ function AddTransactionSheet({ visible, month, onClose }: AddTransactionSheetPro
     month === currentYearMonth() ? new Date().toISOString().slice(0, 10) : `${month}-01`,
   );
   const [note, setNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('upi');
   const [receipt, setReceipt] = useState<PickedReceipt | null>(null);
   const [error, setError] = useState('');
 
@@ -247,6 +264,7 @@ function AddTransactionSheet({ visible, month, onClose }: AddTransactionSheetPro
     setCategory(null);
     setAmount('');
     setNote('');
+    setPaymentMethod('upi');
     setReceipt(null);
     setError('');
     setDate(month === currentYearMonth() ? new Date().toISOString().slice(0, 10) : `${month}-01`);
@@ -290,6 +308,7 @@ function AddTransactionSheet({ visible, month, onClose }: AddTransactionSheetPro
           amount,
           date: date.trim(),
           note: note.trim() || null,
+          payment_method: paymentMethod,
         },
         receipt,
       },
@@ -363,6 +382,13 @@ function AddTransactionSheet({ visible, month, onClose }: AddTransactionSheetPro
             variant="solid"
           />
         </View>
+
+        <ModalChips
+          label="Payment method"
+          options={PAYMENT_METHODS}
+          value={paymentMethod}
+          onChange={(id) => setPaymentMethod(id as PaymentMethod)}
+        />
 
         <View style={styles.dateNoteRow}>
           <View style={[styles.fieldBlock, styles.dateNoteCol]}>

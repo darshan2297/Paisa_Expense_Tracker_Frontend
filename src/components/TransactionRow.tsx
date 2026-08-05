@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Transaction } from '@/features/transactions/types';
+import { PAYMENT_METHOD_LABELS } from '@/features/transactions/types';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
@@ -29,9 +30,16 @@ export type TransactionRowProps = {
 export function TransactionRow({ transaction, onDelete, size = 'sm' }: TransactionRowProps) {
   const isIncome = transaction.type === 'income';
   const title = transaction.note?.trim() || transaction.category.name;
-  const sub = transaction.note?.trim()
-    ? `${transaction.category.name} · ${formatShortDate(`${transaction.date}T00:00:00`)}`
-    : formatShortDate(`${transaction.date}T00:00:00`);
+  const methodLabel = transaction.payment_method
+    ? PAYMENT_METHOD_LABELS[transaction.payment_method]
+    : null;
+  const dateLabel = formatShortDate(`${transaction.date}T00:00:00`);
+  const subParts = [
+    transaction.note?.trim() ? transaction.category.name : null,
+    methodLabel,
+    dateLabel,
+  ].filter(Boolean);
+  const sub = subParts.join(' · ');
   const dims = size === 'md' ? mdDims : smDims;
 
   return (
