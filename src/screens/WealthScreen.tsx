@@ -21,17 +21,21 @@ import {
 import { Sheet } from '@/components/Sheet';
 import { confirmDestructive } from '@/utils/confirm';
 import { getApiErrorMessage } from '@/utils/errors';
+import type { Goal } from '@/features/goals/types';
 import {
   useContributeToGoal,
   useCreateGoal,
   useDeleteGoal,
   useGoals,
+  useUpdateGoal,
 } from '@/features/goals/hooks';
+import type { Investment } from '@/features/investments/api';
 import {
   useCreateInvestment,
   useDeleteInvestment,
   useInvestments,
   useInvestmentsSummary,
+  useUpdateInvestment,
 } from '@/features/investments/hooks';
 import { compact, fmt, initials, pctWidth } from '@/mock/format';
 import { colors } from '@/theme/colors';
@@ -82,6 +86,8 @@ export default function WealthScreen() {
   const [goalSheetOpen, setGoalSheetOpen] = useState(false);
   const [investSheetOpen, setInvestSheetOpen] = useState(false);
   const [contributeGoalId, setContributeGoalId] = useState<string | null>(null);
+  const [editGoal, setEditGoal] = useState<Goal | null>(null);
+  const [editInvestment, setEditInvestment] = useState<Investment | null>(null);
   const [goalName, setGoalName] = useState('');
   const [goalTarget, setGoalTarget] = useState('');
   const [goalSaved, setGoalSaved] = useState('0');
@@ -406,6 +412,17 @@ export default function WealthScreen() {
                   </Pressable>
                   <Pressable
                     hitSlop={8}
+                    style={styles.iconBtn}
+                    onPress={() => {
+                      const raw = goalsList.find((x) => x.id === g.id);
+                      if (raw) setEditGoal(raw);
+                    }}
+                    accessibilityLabel="Edit goal"
+                  >
+                    <Feather name="edit-2" size={15} color={colors.textCaption} />
+                  </Pressable>
+                  <Pressable
+                    hitSlop={8}
                     style={styles.goalRemoveBtn}
                     onPress={() => confirmDeleteGoal(g.id)}
                     accessibilityLabel="Remove goal"
@@ -461,8 +478,20 @@ export default function WealthScreen() {
                 </View>
                 <Pressable
                   hitSlop={8}
+                  style={styles.iconBtn}
+                  onPress={() => {
+                    const raw = investmentsList.find((x) => x.id === v.id);
+                    if (raw) setEditInvestment(raw);
+                  }}
+                  accessibilityLabel="Edit investment"
+                >
+                  <Feather name="edit-2" size={15} color={colors.textCaption} />
+                </Pressable>
+                <Pressable
+                  hitSlop={8}
                   style={styles.deleteBtn}
                   onPress={() => confirmDeleteInvestment(v.id)}
+                  accessibilityLabel="Delete investment"
                 >
                   <Feather name="trash-2" size={15} color="#C0B9AF" />
                 </Pressable>
@@ -552,6 +581,178 @@ export default function WealthScreen() {
           />
         </ModalBody>
       </Sheet>
+
+      <EditGoalSheet goal={editGoal} onClose={() => setEditGoal(null)} />
+      <EditInvestmentSheet investment={editInvestment} onClose={() => setEditInvestment(null)} />
+    </>
+  );
+}
+
+function rupeeField(raw: string | number): string {
+  const n = typeof raw === 'number' ? raw : Number(String(raw).replace(/,/g, ''));
+  if (!Number.isFinite(n)) return '';
+  return String(n);
+}
+
+function EditGoalSheet({ goal, onClose }: { goal: Goal | null; onClose: () => void }) {
+  return (
+    <Sheet visible={!!goal} onClose={onClose} variant="center">
+      {goal ? <EditGoalForm key={goal.id} goal={goal} onClose={onClose} /> : null}
+    </Sheet>
+  );
+}
+
+function EditGoalForm({ goal, onClose }: { goal: Goal; onClose: () => void }) {
+  const updateGoal = useUpdateGoal();
+  const [name, setName] = useState(goal.name);
+  const [target, setTarget] = useState(rupeeField(goal.target_amount));
+  const [monthly, setMonthly] = useState(rupeeField(goal.monthly_contribution));
+  const [error, setError] = useState('');
+
+  function submit() {
+    const targetAmount = safeNumber(target);
+    if (!name.trim()) {
+      setError('Give this goal a name.');
+      return;
+    }
+    if (targetAmount <= 0) {
+      setError('Enter a target amount greater than zero.');
+      return;
+    }
+    if (targetAmount < safeNumber(goal.saved_amount)) {
+      setError('Target cannot be less than the amount already saved.');
+      return;
+    }
+    updateGoal.mutate(
+      {
+        goalId: goal.id,
+        payload: {
+          name: name.trim(),
+          target_amount: String(targetAmount),
+          monthly_contribution: String(Math.max(0, safeNumber(monthly))),
+        },
+      },
+      {
+        onSuccess: onClose,
+        onError: (err) => setError(getApiErrorMessage(err, 'Could not save changes. Try again.')),
+      },
+    );
+  }
+
+  return (
+    <>
+      <ModalHeader title="Edit savings goal" onClose={onClose} />
+      <ModalBody>
+        <ModalAmountField label="Target amount" value={target} onChangeText={setTarget} />
+        <ModalTextField
+          label="Goal name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Emergency fund"
+        />
+        <ModalTextField
+          label="Monthly contribution"
+          value={monthly}
+          onChangeText={setMonthly}
+          placeholder="0"
+          numeric
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save changes" onPress={submit} loading={updateGoal.isPending} />
+      </ModalBody>
+    </>
+  );
+}
+
+function EditInvestmentSheet({
+  investment,
+  onClose,
+}: {
+  investment: Investment | null;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet visible={!!investment} onClose={onClose} variant="center">
+      {investment ? (
+        <EditInvestmentForm key={investment.id} investment={investment} onClose={onClose} />
+      ) : null}
+    </Sheet>
+  );
+}
+
+function EditInvestmentForm({
+  investment,
+  onClose,
+}: {
+  investment: Investment;
+  onClose: () => void;
+}) {
+  const updateInvestment = useUpdateInvestment();
+  const [name, setName] = useState(investment.name);
+  const [kind, setKind] = useState(investment.kind);
+  const [amount, setAmount] = useState(rupeeField(investment.invested_amount));
+  const [current, setCurrent] = useState(rupeeField(investment.current_value));
+  const [monthlySip, setMonthlySip] = useState(rupeeField(investment.monthly_sip));
+  const [error, setError] = useState('');
+
+  function submit() {
+    const invested = safeNumber(amount);
+    if (!name.trim()) {
+      setError('Give this investment a name.');
+      return;
+    }
+    if (invested <= 0) {
+      setError('Enter the amount invested.');
+      return;
+    }
+    const currentValue = safeNumber(current) || invested;
+    updateInvestment.mutate(
+      {
+        investmentId: investment.id,
+        payload: {
+          name: name.trim(),
+          kind,
+          invested_amount: String(invested),
+          current_value: String(currentValue),
+          monthly_sip: String(Math.max(0, safeNumber(monthlySip))),
+        },
+      },
+      {
+        onSuccess: onClose,
+        onError: (err) => setError(getApiErrorMessage(err, 'Could not save changes. Try again.')),
+      },
+    );
+  }
+
+  return (
+    <>
+      <ModalHeader title="Edit investment" onClose={onClose} />
+      <ModalBody>
+        <ModalAmountField label="Amount invested" value={amount} onChangeText={setAmount} />
+        <ModalTextField
+          label="Investment name"
+          value={name}
+          onChangeText={setName}
+          placeholder="e.g. Nifty 50 Index Fund"
+        />
+        <ModalChips label="Instrument" options={INVEST_KINDS} value={kind} onChange={setKind} />
+        <ModalTextField
+          label="Current value"
+          value={current}
+          onChangeText={setCurrent}
+          placeholder="0"
+          numeric
+        />
+        <ModalTextField
+          label="Monthly SIP"
+          value={monthlySip}
+          onChangeText={setMonthlySip}
+          placeholder="0"
+          numeric
+        />
+        <ModalError message={error} />
+        <ModalSave label="Save changes" onPress={submit} loading={updateInvestment.isPending} />
+      </ModalBody>
     </>
   );
 }
@@ -781,6 +982,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   investGain: { fontFamily: fontFamily.bold, fontSize: 11.5, marginTop: 2 },
+  iconBtn: { padding: 4 },
   deleteBtn: { padding: 4 },
   goalRemoveBtn: {
     width: 30,
