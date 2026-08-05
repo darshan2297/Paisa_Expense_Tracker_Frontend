@@ -43,7 +43,7 @@ import { radius, spacing } from '@/theme/spacing';
 import { fontFamily, moneyTextStyle } from '@/theme/typography';
 import { formatINR } from '@/utils/currency';
 import { confirmDestructive } from '@/utils/confirm';
-import { currentYearMonth, formatYearMonthLabel } from '@/utils/date';
+import { currentYearMonth, daysRemainingInMonth, formatYearMonthLabel } from '@/utils/date';
 
 /** Mockup `budgetPresets` / `leadOptions`. */
 const AMOUNT_PRESETS = [30000, 45000, 55000, 75000, 100000];
@@ -216,6 +216,11 @@ export default function PlannedScreen() {
     [fixedList],
   );
 
+  // Device-local countdown so "days left" can't freeze on a cached server day.
+  const daysLeft = daysRemainingInMonth(month);
+  const remainingAmount = Number(budgetSummary.data?.remaining ?? 0);
+  const perDayLeft = daysLeft > 0 ? remainingAmount / daysLeft : 0;
+
   const budgetHero = budgetSummary.data ? (
     <HeroCard style={styles.hero}>
       <Text style={styles.heroEyebrow}>Remaining · {formatYearMonthLabel(month)}</Text>
@@ -235,15 +240,12 @@ export default function PlannedScreen() {
         />
       </View>
       <Text style={styles.heroNote}>
-        {formatINR(Number(budgetSummary.data.spent))} spent ·{' '}
-        {budgetSummary.data.days_remaining_in_month} days left
+        {formatINR(Number(budgetSummary.data.spent))} spent · {daysLeft} days left
       </Text>
       <View style={styles.heroStats}>
         <View style={styles.heroStat}>
           <Text style={styles.heroStatLabel}>Left per day</Text>
-          <Text style={[styles.heroStatValue, moneyTextStyle]}>
-            {formatINR(Number(budgetSummary.data.per_day_left))}
-          </Text>
+          <Text style={[styles.heroStatValue, moneyTextStyle]}>{formatINR(perDayLeft)}</Text>
         </View>
         <View style={styles.heroStat}>
           <Text style={styles.heroStatLabel}>Fixed committed</Text>

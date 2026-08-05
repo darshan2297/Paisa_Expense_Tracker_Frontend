@@ -23,6 +23,8 @@ import type {
   TransactionsSummary,
 } from '@/features/transactions/types';
 
+import { daysRemainingInMonth } from '@/utils/date';
+
 import { MOCK_BILLS, MOCK_BUDGET_SETTINGS, MOCK_FIXED_COMMITMENTS } from './seed/budget';
 import { MOCK_CATEGORIES, categoryById } from './seed/categories';
 import { MOCK_CARDS, cardsSummaryFrom } from './seed/cards';
@@ -140,13 +142,7 @@ class MockStore {
       .reduce((s, t) => s + Number(t.amount), 0);
     const monthly = Number(this.budgetSettings.monthly_amount);
     const remaining = monthly - spent;
-    const [y, m] = month.split('-').map(Number);
-    const daysInMonth = new Date(y, m, 0).getDate();
-    const today = new Date();
-    const daysRemaining =
-      today.getFullYear() === y && today.getMonth() + 1 === m
-        ? Math.max(1, daysInMonth - today.getDate() + 1)
-        : daysInMonth;
+    const daysRemaining = daysRemainingInMonth(month);
 
     const overBy = Math.max(0, spent - monthly);
     return this.delay({

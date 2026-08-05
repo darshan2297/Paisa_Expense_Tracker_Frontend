@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useSessionStore } from '@/stores/sessionStore';
+import { todayKey } from '@/utils/date';
 
 import * as budgetApi from './api';
 import type { BudgetSettingsUpdatePayload, FixedCommitmentCreatePayload } from './types';
 
 export const budgetSettingsQueryKey = ['budget', 'settings'] as const;
-export const budgetSummaryQueryKey = (month: string) => ['budget', 'summary', month] as const;
+export const budgetSummaryQueryKey = (month: string, day = todayKey()) =>
+  ['budget', 'summary', month, day] as const;
 export const fixedCommitmentsQueryKey = (month: string) => ['fixedCommitments', month] as const;
 
 export function useBudgetSettings() {
@@ -14,8 +16,9 @@ export function useBudgetSettings() {
 }
 
 export function useBudgetSummary(month: string) {
+  const day = todayKey();
   return useQuery({
-    queryKey: budgetSummaryQueryKey(month),
+    queryKey: budgetSummaryQueryKey(month, day),
     queryFn: () => budgetApi.getBudgetSummary(month),
   });
 }

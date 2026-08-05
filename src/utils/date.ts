@@ -83,3 +83,26 @@ export function formatYearMonthLabel(yearMonth: string): string {
     year: 'numeric',
   });
 }
+
+/** Local calendar date as `YYYY-MM-DD` (device timezone). */
+export function todayKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Days left in `yearMonth` for budget pacing (includes today).
+ * Current month → countdown from local today; future → full month; past → 1.
+ */
+export function daysRemainingInMonth(yearMonth: string, now: Date = new Date()): number {
+  const [year, month] = yearMonth.split('-').map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const inCurrentMonth = now.getFullYear() === year && now.getMonth() + 1 === month;
+  if (inCurrentMonth) {
+    return Math.max(1, daysInMonth - now.getDate() + 1);
+  }
+  const monthStart = new Date(year, month - 1, 1);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (monthStart > todayStart) return daysInMonth;
+  return 1;
+}
