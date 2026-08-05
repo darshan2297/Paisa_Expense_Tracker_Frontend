@@ -44,7 +44,7 @@ export function NotificationsPanel({ visible, onClose }: NotificationsPanelProps
       <View style={styles.header}>
         <Text style={styles.title}>Notifications</Text>
         {unreadCount > 0 ? (
-          <Pressable onPress={() => markAllRead.mutate()} hitSlop={8}>
+          <Pressable onPress={() => markAllRead.mutate()} hitSlop={8} style={styles.markAll}>
             <Text style={styles.markAllLabel}>Mark all read</Text>
           </Pressable>
         ) : null}
@@ -97,16 +97,23 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    width: '100%',
     marginBottom: 16,
   },
   title: {
+    flexShrink: 1,
     fontFamily: fontFamily.extrabold,
     fontSize: 18,
     letterSpacing: -0.45,
     color: colors.textPrimary,
   },
-  markAllLabel: {
+  markAll: {
+    flexShrink: 0,
     marginLeft: 'auto',
+  },
+  markAllLabel: {
     fontFamily: fontFamily.bold,
     fontSize: 12,
     color: colors.accent,
