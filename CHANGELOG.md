@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/compare/v1.1.0...v1.1.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* add edit sheets for investments and goals on Wealth ([c7d76ab](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/c7d76abb2db51c9fee2c0d944a7dcbf242d9f6bc))
+
 ## [1.1.0](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/compare/v1.0.0...v1.1.0) (2026-08-05)
 
 
