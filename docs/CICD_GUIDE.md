@@ -17,7 +17,7 @@ release-please → scans Conventional Commits, opens/updates a Release PR
 [on Release PR merge] → tags vX.Y.Z, publishes a GitHub Release
 build-and-push (fallback image, not the prod deploy path)
                 → builds/pushes ghcr.io/.../paisa-frontend:{vX.Y.Z,latest}
-eas-build       → placeholder until an EAS account/app-store credentials exist
+eas-build       → Android APK via EAS (`docs/ANDROID_BUILD.md`); iOS needs Apple Developer
 deploy          → vercel pull / vercel build / vercel deploy --prebuilt --prod
                   (builds from source — this is the actual production path)
 ```

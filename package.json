@@ -41,7 +41,8 @@
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "expo-updates": "~57.0.12"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
@@ -57,7 +58,8 @@
     "jest-expo": "^57.0.3",
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.6",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "eas-cli": "^21.5.0"
   },
   "scripts": {
     "start": "expo start --port 8081",
@@ -69,7 +71,9 @@
     "format": "prettier --write .",
     "prepare": "husky",
     "test": "jest",
-    "smoke:api": "node scripts/smoke-api.mjs"
+    "smoke:api": "node scripts/smoke-api.mjs",
+    "build:android": "eas build -p android --profile production",
+    "build:android:play": "eas build -p android --profile play-store"
   },
   "private": true,
   "jest": {

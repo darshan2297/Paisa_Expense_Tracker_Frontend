@@ -174,10 +174,17 @@ export function AccountStepForm({ mode, onAuthenticated }: AccountStepFormProps)
 function submissionErrorMessage(mode: AuthMode, error: unknown): string {
   if (isAxiosError(error)) {
     if (mode === 'register' && error.response?.status === 409) {
-      return 'An account already exists on this server. Sign in instead.';
+      return 'An account already exists on this server. Use Sign in instead.';
     }
     if (mode === 'signin' && error.response?.status === 401) {
       return 'Incorrect email or password.';
+    }
+    const backendMessage = (error.response?.data as { message?: string } | undefined)?.message;
+    if (typeof backendMessage === 'string' && backendMessage.trim()) {
+      return backendMessage;
+    }
+    if (!error.response) {
+      return 'Cannot reach the server. Check your connection and try again.';
     }
   }
   return 'Something went wrong. Please try again.';
