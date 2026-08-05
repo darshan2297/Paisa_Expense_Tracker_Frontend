@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.1.0](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/compare/v1.0.0...v1.1.0) (2026-08-05)
+
+
+### Features
+
+* capture and show payment method on transactions ([a7dc5b3](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/a7dc5b39b027a1b3ba2391a0dc5f55bb79012c6e))
+
+
+### Bug Fixes
+
+* add edit card sheet for limit, outstanding, and EMI ([a944542](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/a9445427220daa7ed9af715484d83c5ef41b6e9d))
+* add expo-notifications dependency for push module ([797d298](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/797d298a43a0b18efa30494f5071fbb2be3c8256))
+* add missing push notification module for logout import ([a9b54fc](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/a9b54fcd27f9d21e7531e55d95651e5ff0f9bee5))
+* align Investments header button and summary strip ([bc7fbec](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/bc7fbec5ed54856ba56b78717566da6416f67d45))
+* align Mark all read in notifications header ([2f5c37f](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/2f5c37f2100e2a091fcb8234616c7713176dfe0d))
+* allow editing loans from the loans list ([9ee682d](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/9ee682d5bc9a1a3cd2fe577b8d9bdbcb7df61645))
+* card pay confirm, cycle dates, EMI pay, commitment amount ([942189a](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/942189a1f42090eddd8c42832166266f72092591))
+* default calendar Pick a day to today ([5c931b2](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/5c931b29256af88efa10f2d7efd7ae40d12589b7))
+* edit remaining months so loan EMI matches bank ([7581647](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/7581647122e97fba66e69c80a1351151f7b92159))
+* keep budget days-left countdown on local today ([b721682](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/b721682fbb87e676daa87d429868e02f022edb6c))
+* keep report chart bars inside a fixed track ([5883edf](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/5883edfd9bc5de820cb80e2b9529f9f13fb38aa3))
+* label loan card principal as principal paid ([118a6eb](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/118a6eb75066efb1ee137aad96a5b52bb245b052))
+* refresh transactions after people ledger settle-ups ([aef5842](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/aef58429145f8b32155f757f0bfce544767f0f22))
+* replace browser confirm with in-app delete modal ([89dee0a](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/89dee0a82f44f390ba020e4a0355ba1f69d8546e))
+* resolve amount borders, bills, deletes, notifications, profile ([f36ef47](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/f36ef4731d5e1fd3011eb92d2f928d58a82d534a))
+* show fixed commitments in calendar upcoming payments ([64165b3](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/64165b32b92acc7314dce5fb037ab00141e0838d))
+* sign out locally when refresh fails after remote revoke ([23973bb](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/23973bb0b340500344a92d92007b79c44a092b08))
+* stop caching empty dashboard after login race ([11accd1](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/11accd1da8894aac491d17f2f1a0c681769a7bf6))
+
 ## 1.0.0 (2026-08-04)
 
 
