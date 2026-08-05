@@ -1,5 +1,7 @@
 import { create as createAxiosClient, isAxiosError, type InternalAxiosRequestConfig } from 'axios';
 
+import { clearAppUnlockSession } from '@/features/appLock/unlockSession';
+import { useSessionStore } from '@/stores/sessionStore';
 import { secureStorage } from '@/utils/secureStorage';
 
 /**
@@ -72,9 +74,18 @@ type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
 // rotated on use, so only the first would actually succeed.
 let refreshPromise: Promise<string | null> | null = null;
 
+async function forceLocalSignOut(): Promise<void> {
+  await clearTokens();
+  clearAppUnlockSession();
+  // Remote "Sign out" / expired refresh must leave the app, not a ghost
+  // authenticated shell with empty SecureStore.
+  useSessionStore.getState().setAuthenticated(false);
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = await getRefreshToken();
   if (!refreshToken) {
+    await forceLocalSignOut();
     return null;
   }
   try {
@@ -88,19 +99,16 @@ async function refreshAccessToken(): Promise<string | null> {
     await storeTokens(pair.access_token, pair.refresh_token);
     return pair.access_token;
   } catch {
-    await clearTokens();
+    await forceLocalSignOut();
     return null;
   }
 }
 
 // --- Response interceptor -----------------------------------------------
 // On a 401, attempt exactly one refresh-and-retry. If the refresh itself
-// fails (refresh token also expired/revoked), tokens are cleared and the
-// original error propagates - `useSessionStore`'s consumers react to that
-// via each feature's own error handling; there is no global "log the user
-// out" side effect here beyond clearing the stored tokens, since this
-// module doesn't know about routing (see src/features/auth/hooks.ts for the
-// screen-level reaction, e.g. redirecting to login).
+// fails (refresh token also expired/revoked — including remote device sign
+// out), clear tokens + session store so the auth guard sends the user to
+// login on that device.
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {
