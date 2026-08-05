@@ -33,11 +33,23 @@ function todayKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+function defaultSelectedDayForMonth(yearMonth: string): string | null {
+  const today = todayKey();
+  return today.startsWith(`${yearMonth}-`) ? today : null;
+}
+
 /** Design HTML `isCalendar` — cash-flow calendar with day drill-down. */
 export default function CalendarScreen() {
   const [month, setMonth] = useState(currentYearMonth());
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(() =>
+    defaultSelectedDayForMonth(currentYearMonth()),
+  );
   const { data: calendar } = useCalendar(month);
+
+  const handleMonthChange = (nextMonth: string) => {
+    setMonth(nextMonth);
+    setSelectedDay(defaultSelectedDayForMonth(nextMonth));
+  };
 
   const dayMap = useMemo(() => {
     const map = new Map<string, CalendarDay>();
@@ -182,7 +194,7 @@ export default function CalendarScreen() {
   }, [calendar?.days]);
 
   return (
-    <ScreenScaffold month={month} onMonthChange={setMonth}>
+    <ScreenScaffold month={month} onMonthChange={handleMonthChange}>
       <DesignGrid cols={3} tabletCols={2} narrowCols={1}>
         <DesignKpiCard
           label="Money in"
