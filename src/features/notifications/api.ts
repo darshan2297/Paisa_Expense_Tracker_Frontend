@@ -18,3 +18,7 @@ export async function markAllNotificationsRead(): Promise<void> {
 export async function registerPushToken(expo_push_token: string, device_label?: string) {
   await apiClient.post('/push-tokens', { expo_push_token, device_label });
 }
+
+export async function deletePushToken(expo_push_token: string): Promise<void> {
+  await apiClient.delete(`/push-tokens/${encodeURIComponent(expo_push_token)}`);
+}
