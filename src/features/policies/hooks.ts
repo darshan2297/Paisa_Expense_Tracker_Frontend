@@ -1,14 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useSessionStore } from '@/stores/sessionStore';
+
 import * as api from './api';
 import type { PolicyCreatePayload } from './types';
 
 export function usePolicies() {
-  return useQuery({ queryKey: ['policies'], queryFn: api.getPolicies });
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  return useQuery({
+    queryKey: ['policies'],
+    queryFn: api.getPolicies,
+    enabled: isAuthenticated,
+  });
 }
 
 export function usePoliciesSummary() {
-  return useQuery({ queryKey: ['policies', 'summary'], queryFn: api.getPoliciesSummary });
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  return useQuery({
+    queryKey: ['policies', 'summary'],
+    queryFn: api.getPoliciesSummary,
+    enabled: isAuthenticated,
+  });
 }
 
 export function useCreatePolicy() {

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useSessionStore } from '@/stores/sessionStore';
+
 import * as budgetApi from './api';
 import type { BudgetSettingsUpdatePayload, FixedCommitmentCreatePayload } from './types';
 
@@ -30,9 +32,11 @@ export function useUpdateBudgetSettings() {
 }
 
 export function useFixedCommitments(month: string) {
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
   return useQuery({
     queryKey: fixedCommitmentsQueryKey(month),
     queryFn: () => budgetApi.getFixedCommitments(month),
+    enabled: isAuthenticated,
   });
 }
 

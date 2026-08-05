@@ -1,5 +1,6 @@
 import { create as createAxiosClient, isAxiosError, type InternalAxiosRequestConfig } from 'axios';
 
+import { queryClient } from '@/api/queryClient';
 import { clearAppUnlockSession } from '@/features/appLock/unlockSession';
 import { useSessionStore } from '@/stores/sessionStore';
 import { secureStorage } from '@/utils/secureStorage';
@@ -77,6 +78,7 @@ let refreshPromise: Promise<string | null> | null = null;
 async function forceLocalSignOut(): Promise<void> {
   await clearTokens();
   clearAppUnlockSession();
+  queryClient.clear();
   // Remote "Sign out" / expired refresh must leave the app, not a ghost
   // authenticated shell with empty SecureStore.
   useSessionStore.getState().setAuthenticated(false);

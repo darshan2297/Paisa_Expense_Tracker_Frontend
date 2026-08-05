@@ -2,8 +2,10 @@ import { useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 
 import { clearTokens, getAccessToken, storeTokens } from '@/api/client';
+import { queryClient } from '@/api/queryClient';
 import { clearAppUnlockSession, markAppUnlocked } from '@/features/appLock/unlockSession';
 import { hasPinConfigured } from '@/features/appLock/pin';
+import { unregisterPushNotifications } from '@/features/notifications/push';
 import { useAppLockStore } from '@/stores/appLockStore';
 import { useOnboardingFlowStore } from '@/stores/onboardingFlowStore';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -25,6 +27,12 @@ async function clearStaleDeviceSession(): Promise<void> {
   // source of truth and is re-checked on the next sign-in.
   await clearTokens();
   clearAppUnlockSession();
+  queryClient.clear();
+}
+
+/** Wipe cached queries so a new session never reuses prior ₹0 / 401 leftovers. */
+function resetQueryCache(): void {
+  queryClient.clear();
 }
 
 /**
@@ -101,6 +109,7 @@ export function useLogin(options?: AuthMutationOptions) {
     mutationFn: (payload: LoginPayload) => authApi.login(payload),
     onSuccess: async (tokenPair) => {
       await storeTokens(tokenPair.access_token, tokenPair.refresh_token);
+      resetQueryCache();
       setAuthenticated(true);
       await afterAuthSuccess(tokenPair, options?.onAuthenticated);
     },
@@ -114,6 +123,7 @@ export function useRegister(options?: AuthMutationOptions) {
     mutationFn: (payload: RegisterPayload) => authApi.register(payload),
     onSuccess: async (tokenPair) => {
       await storeTokens(tokenPair.access_token, tokenPair.refresh_token);
+      resetQueryCache();
       setAuthenticated(true);
       await afterAuthSuccess(tokenPair, options?.onAuthenticated);
     },
@@ -132,8 +142,10 @@ export function useLogout() {
     // Local PIN cache stays: account PIN is the source of truth. Clearing
     // local cache here is unnecessary; a new browser has no cache anyway.
     onSettled: async () => {
+      await unregisterPushNotifications();
       await clearTokens();
       clearAppUnlockSession();
+      resetQueryCache();
       setAuthenticated(false);
       useOnboardingFlowStore.getState().setInProgress(false);
       router.replace('/(auth)/login');

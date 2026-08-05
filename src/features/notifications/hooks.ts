@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { useSessionStore } from '@/stores/sessionStore';
+
 import * as api from './api';
 
 export function useNotifications() {
-  return useQuery({ queryKey: ['notifications'], queryFn: api.getNotifications });
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: api.getNotifications,
+    enabled: isAuthenticated,
+  });
 }
 
 export function useMarkNotificationRead() {
