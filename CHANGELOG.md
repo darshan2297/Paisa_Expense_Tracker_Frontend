@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/compare/v1.1.1...v1.1.2) (2026-08-06)
+
+
+### Bug Fixes
+
+* add edit sheet for transactions on the list ([c621bc3](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/commit/c621bc3314f4b5e87bd70495c1374b44aebeff0a))
+
 ## [1.1.1](https://github.com/darshan2297/Paisa_Expense_Tracker_Frontend/compare/v1.1.0...v1.1.1) (2026-08-05)
 
 
