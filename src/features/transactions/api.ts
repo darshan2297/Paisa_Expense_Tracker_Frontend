@@ -9,6 +9,7 @@ import type {
   TransactionFilters,
   TransactionListResponse,
   TransactionsSummary,
+  TransactionUpdatePayload,
 } from './types';
 
 export async function getTransactions(
@@ -43,7 +44,7 @@ export async function createTransaction(payload: TransactionCreatePayload): Prom
 
 export async function updateTransaction(
   transactionId: string,
-  payload: Partial<TransactionCreatePayload>,
+  payload: TransactionUpdatePayload,
 ): Promise<Transaction> {
   const response = await apiClient.patch<Envelope<Transaction>>(
     `/transactions/${transactionId}`,

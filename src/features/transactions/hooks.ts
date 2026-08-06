@@ -3,7 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PickedReceipt } from '@/utils/receiptPicker';
 
 import * as transactionsApi from './api';
-import type { TransactionCreatePayload, TransactionFilters } from './types';
+import type {
+  TransactionCreatePayload,
+  TransactionFilters,
+  TransactionUpdatePayload,
+} from './types';
 
 export const transactionsQueryKey = (filters: TransactionFilters) =>
   ['transactions', filters] as const;
@@ -63,6 +67,33 @@ export function useCreateTransaction() {
         return { transaction: withReceipt, receiptUploadFailed: false };
       } catch {
         return { transaction: created, receiptUploadFailed: true };
+      }
+    },
+    onSuccess: () => invalidateMoneyQueries(queryClient),
+  });
+}
+
+export function useUpdateTransaction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      transactionId,
+      payload,
+      receipt,
+    }: {
+      transactionId: string;
+      payload: TransactionUpdatePayload;
+      receipt?: PickedReceipt | null;
+    }) => {
+      const updated = await transactionsApi.updateTransaction(transactionId, payload);
+      if (!receipt) {
+        return { transaction: updated, receiptUploadFailed: false as const };
+      }
+      try {
+        const withReceipt = await transactionsApi.uploadReceipt(transactionId, receipt);
+        return { transaction: withReceipt, receiptUploadFailed: false as const };
+      } catch {
+        return { transaction: updated, receiptUploadFailed: true as const };
       }
     },
     onSuccess: () => invalidateMoneyQueries(queryClient),

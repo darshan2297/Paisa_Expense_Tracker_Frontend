@@ -65,6 +65,15 @@ export type TransactionCreatePayload = {
   payment_method?: PaymentMethod | null;
 };
 
+/** PATCH body — type cannot be changed after create. */
+export type TransactionUpdatePayload = {
+  category_id?: string;
+  amount?: string;
+  date?: string;
+  note?: string | null;
+  payment_method?: PaymentMethod | null;
+};
+
 export type TransactionFilters = {
   month: string;
   type?: TransactionType;

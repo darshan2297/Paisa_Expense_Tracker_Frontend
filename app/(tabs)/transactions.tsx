@@ -26,6 +26,7 @@ import {
   useCreateTransaction,
   useDeleteTransaction,
   useTransactions,
+  useUpdateTransaction,
 } from '@/features/transactions/hooks';
 import type { PaymentMethod, Transaction, TransactionType } from '@/features/transactions/types';
 import { PAYMENT_METHOD_LABELS } from '@/features/transactions/types';
@@ -35,6 +36,7 @@ import { fontFamily, fontSize } from '@/theme/typography';
 import { confirmDestructive } from '@/utils/confirm';
 import { formatINR } from '@/utils/currency';
 import { currentYearMonth } from '@/utils/date';
+import { getApiErrorMessage } from '@/utils/errors';
 import {
   pickReceiptFromCamera,
   pickReceiptFromLibrary,
@@ -106,6 +108,7 @@ export default function TransactionsScreen() {
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [addOpen, setAddOpen] = useState(false);
+  const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
 
   // Open the Add Transaction sheet in response to a `?openAdd=1` navigation
   // param (e.g. a deep link or the Overview screen's quick-add button).
@@ -213,6 +216,7 @@ export default function TransactionsScreen() {
                   <View style={styles.row} key={transaction.id}>
                     <TransactionRow
                       transaction={transaction}
+                      onEdit={() => setEditTransaction(transaction)}
                       onDelete={() => confirmDeleteTransaction(transaction.id)}
                       size="md"
                     />
@@ -225,6 +229,10 @@ export default function TransactionsScreen() {
       </ScreenScaffold>
 
       <AddTransactionSheet visible={addOpen} month={month} onClose={() => setAddOpen(false)} />
+      <EditTransactionSheet
+        transaction={editTransaction}
+        onClose={() => setEditTransaction(null)}
+      />
     </>
   );
 }
@@ -454,6 +462,217 @@ function AddTransactionSheet({ visible, month, onClose }: AddTransactionSheetPro
         />
       </View>
     </Sheet>
+  );
+}
+
+function EditTransactionSheet({
+  transaction,
+  onClose,
+}: {
+  transaction: Transaction | null;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet visible={!!transaction} onClose={onClose} variant="center">
+      {transaction ? (
+        <EditTransactionForm key={transaction.id} transaction={transaction} onClose={onClose} />
+      ) : null}
+    </Sheet>
+  );
+}
+
+function EditTransactionForm({
+  transaction,
+  onClose,
+}: {
+  transaction: Transaction;
+  onClose: () => void;
+}) {
+  const categories = useCategories();
+  const updateTransaction = useUpdateTransaction();
+  const [category, setCategory] = useState<Category | null>(transaction.category);
+  const [amount, setAmount] = useState(String(Number(transaction.amount) || transaction.amount));
+  const [date, setDate] = useState(transaction.date);
+  const [note, setNote] = useState(transaction.note ?? '');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    transaction.payment_method ?? 'upi',
+  );
+  const [receipt, setReceipt] = useState<PickedReceipt | null>(null);
+  const [error, setError] = useState('');
+
+  const options = (categories.data ?? []).filter((c) => c.kind === transaction.type);
+  const resolvedCategory = category ?? options[0] ?? transaction.category;
+
+  async function attachFromCamera() {
+    const picked = await pickReceiptFromCamera();
+    if (picked) setReceipt(picked);
+  }
+
+  async function attachFromGallery() {
+    const picked = await pickReceiptFromLibrary();
+    if (picked) setReceipt(picked);
+  }
+
+  function submit() {
+    const numericAmount = Number(amount);
+    if (!resolvedCategory) {
+      setError('Choose a category.');
+      return;
+    }
+    if (!amount || Number.isNaN(numericAmount) || numericAmount <= 0) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+    if (!date.trim()) {
+      setError('Choose a date.');
+      return;
+    }
+
+    updateTransaction.mutate(
+      {
+        transactionId: transaction.id,
+        payload: {
+          category_id: resolvedCategory.id,
+          amount: String(numericAmount),
+          date: date.trim(),
+          note: note.trim() || null,
+          payment_method: paymentMethod,
+        },
+        receipt,
+      },
+      {
+        onSuccess: (result) => {
+          onClose();
+          if (result.receiptUploadFailed) {
+            Alert.alert(
+              'Receipt not saved',
+              'Transaction was updated, but the receipt could not be uploaded.',
+            );
+          }
+        },
+        onError: (err) => setError(getApiErrorMessage(err, 'Could not save changes. Try again.')),
+      },
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.sheetHeader}>
+        <Text style={styles.sheetTitle}>Edit transaction</Text>
+        <Pressable onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close">
+          <Text style={styles.closeBtnText}>×</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.typeToggle}>
+        <View style={[styles.typeButton, styles.typeButtonActive]}>
+          <Text style={[styles.typeButtonLabel, styles.typeButtonLabelActive]}>
+            {transaction.type === 'expense' ? 'Expense' : 'Income'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.formFields}>
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Amount</Text>
+          <View style={styles.amountField}>
+            <Text style={styles.amountSymbol}>₹</Text>
+            <TextInput
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="0"
+              placeholderTextColor={colors.textCaption}
+              keyboardType="numeric"
+              style={styles.amountInput}
+            />
+          </View>
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Category</Text>
+          <CategoryPicker
+            categories={options}
+            selectedId={resolvedCategory?.id ?? null}
+            onSelect={setCategory}
+            variant="solid"
+          />
+        </View>
+
+        <ModalChips
+          label="Payment method"
+          options={PAYMENT_METHODS}
+          value={paymentMethod}
+          onChange={(id) => setPaymentMethod(id as PaymentMethod)}
+        />
+
+        <View style={styles.dateNoteRow}>
+          <View style={[styles.fieldBlock, styles.dateNoteCol]}>
+            <Text style={styles.fieldLabel}>Date</Text>
+            <DateField value={date} onChange={setDate} />
+          </View>
+          <View style={[styles.fieldBlock, styles.dateNoteCol]}>
+            <Text style={styles.fieldLabel}>Note</Text>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Optional"
+              placeholderTextColor={colors.textCaption}
+              style={styles.noteInput}
+            />
+          </View>
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>
+            Receipt / slip{transaction.has_receipt && !receipt ? ' (already attached)' : ''}
+          </Text>
+          {receipt ? (
+            <View style={styles.receiptPreviewRow}>
+              <Image source={{ uri: receipt.uri }} style={styles.receiptThumb} contentFit="cover" />
+              <View style={styles.receiptMeta}>
+                <Text style={styles.receiptName} numberOfLines={1}>
+                  {receipt.name}
+                </Text>
+                <Pressable onPress={() => setReceipt(null)} hitSlop={8}>
+                  <Text style={styles.receiptRemove}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.receiptActions}>
+              <Pressable
+                onPress={() => void attachFromCamera()}
+                style={styles.receiptActionBtn}
+                accessibilityLabel="Take receipt photo"
+              >
+                <Feather name="camera" size={15} color={colors.textPrimary} />
+                <Text style={styles.receiptActionLabel}>Camera</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void attachFromGallery()}
+                style={styles.receiptActionBtn}
+                accessibilityLabel="Upload receipt from gallery"
+              >
+                <Feather name="image" size={15} color={colors.textPrimary} />
+                <Text style={styles.receiptActionLabel}>
+                  {transaction.has_receipt ? 'Replace' : 'Upload'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        <Button
+          label="Save changes"
+          onPress={submit}
+          loading={updateTransaction.isPending}
+          size="lg"
+          style={styles.saveBtn}
+        />
+      </View>
+    </>
   );
 }
 

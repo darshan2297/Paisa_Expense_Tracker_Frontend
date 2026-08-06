@@ -11,6 +11,8 @@ import { formatShortDate } from '@/utils/date';
 
 export type TransactionRowProps = {
   transaction: Transaction;
+  /** Omit to hide the edit affordance (used for the Overview "Recent" card). */
+  onEdit?: () => void;
   /** Omit to hide the delete affordance (used for the Overview "Recent" card). */
   onDelete?: () => void;
   /**
@@ -27,7 +29,12 @@ export type TransactionRowProps = {
  * amount - shared between the Overview "Recent" card and the Transactions
  * list, pixel-matched to the mockup's two row-size variants.
  */
-export function TransactionRow({ transaction, onDelete, size = 'sm' }: TransactionRowProps) {
+export function TransactionRow({
+  transaction,
+  onEdit,
+  onDelete,
+  size = 'sm',
+}: TransactionRowProps) {
   const isIncome = transaction.type === 'income';
   const title = transaction.note?.trim() || transaction.category.name;
   const methodLabel = transaction.payment_method
@@ -84,12 +91,22 @@ export function TransactionRow({ transaction, onDelete, size = 'sm' }: Transacti
         {isIncome ? '+' : '−'}
         {formatINR(Math.abs(Number(transaction.amount)))}
       </Text>
+      {onEdit ? (
+        <Pressable
+          onPress={onEdit}
+          hitSlop={8}
+          accessibilityLabel="Edit transaction"
+          style={styles.iconButton}
+        >
+          <Feather name="edit-2" size={15} color={colors.textCaption} />
+        </Pressable>
+      ) : null}
       {onDelete ? (
         <Pressable
           onPress={onDelete}
           hitSlop={8}
           accessibilityLabel="Delete transaction"
-          style={styles.deleteButton}
+          style={styles.iconButton}
         >
           <Feather name="trash-2" size={15} color={colors.textCaption} />
         </Pressable>
@@ -153,7 +170,7 @@ const styles = StyleSheet.create({
   amountExpense: {
     color: colors.dangerValue,
   },
-  deleteButton: {
+  iconButton: {
     padding: spacing.xs,
   },
 });
